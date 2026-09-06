@@ -38,6 +38,19 @@ public enum WatermarkRenderer {
         )
     }
 
+    public static func renderSource(source: NSImage) throws -> NSImage {
+        guard let sourceCGImage = pixelCGImage(from: source) else {
+            throw WatermarkRenderError.invalidSourceImage
+        }
+
+        return try render(
+            sourceCGImage: sourceCGImage,
+            template: nil,
+            outputWidth: sourceCGImage.width,
+            outputHeight: sourceCGImage.height
+        )
+    }
+
     public static func renderPreview(
         source: NSImage,
         template: WatermarkTemplate,
@@ -60,9 +73,30 @@ public enum WatermarkRenderer {
         )
     }
 
+    public static func renderSourcePreview(
+        source: NSImage,
+        maxPixelDimension: Int = 1_200
+    ) throws -> NSImage {
+        guard maxPixelDimension > 0,
+              let sourceCGImage = pixelCGImage(from: source) else {
+            throw WatermarkRenderError.invalidSourceImage
+        }
+
+        let sourceMax = max(sourceCGImage.width, sourceCGImage.height)
+        let scale = min(1, Double(maxPixelDimension) / Double(sourceMax))
+        let width = max(1, Int((Double(sourceCGImage.width) * scale).rounded()))
+        let height = max(1, Int((Double(sourceCGImage.height) * scale).rounded()))
+        return try render(
+            sourceCGImage: sourceCGImage,
+            template: nil,
+            outputWidth: width,
+            outputHeight: height
+        )
+    }
+
     private static func render(
         sourceCGImage: CGImage,
-        template: WatermarkTemplate,
+        template: WatermarkTemplate?,
         outputWidth width: Int,
         outputHeight height: Int
     ) throws -> NSImage {
@@ -81,7 +115,13 @@ public enum WatermarkRenderer {
 
         context.interpolationQuality = .high
         context.draw(sourceCGImage, in: CGRect(x: 0, y: 0, width: width, height: height))
-        drawWatermark(in: context, canvasSize: CGSize(width: width, height: height), template: template.clamped())
+        if let template {
+            drawWatermark(
+                in: context,
+                canvasSize: CGSize(width: width, height: height),
+                template: template.clamped()
+            )
+        }
 
         guard let result = context.makeImage() else {
             throw WatermarkRenderError.outputCreationFailed
