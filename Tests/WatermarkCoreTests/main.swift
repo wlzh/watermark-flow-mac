@@ -66,6 +66,13 @@ func sampleImage(width: Int, height: Int) throws -> NSImage {
 
 var runner = TestRunner()
 
+runner.test("application identity links are stable") {
+    try expect(AppVersion.author == "X @wlzh", "author changed")
+    try expect(AppVersion.authorProfileURL == "https://x.com/wlzh", "author profile URL changed")
+    try expect(URL(string: AppVersion.authorProfileURL)?.scheme == "https", "author profile URL is invalid")
+    try expect(AppVersion.websiteURL == "https://869hr.uk", "website URL changed")
+}
+
 runner.test("built-in templates are stable") {
     try expect(DefaultTemplates.all.count == 3, "expected three templates")
     try expect(DefaultTemplates.all.map(\.id) == [
