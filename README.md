@@ -4,6 +4,7 @@ WatermarkFlow 是一个轻量的原生 macOS 菜单栏水印工具。复制图�
 
 - 作者：[X @wlzh](https://x.com/wlzh)
 - 网站：[https://869hr.uk](https://869hr.uk)
+- 开源许可：[MIT License](LICENSE)
 
 ## 当前功能
 
@@ -52,4 +53,8 @@ WatermarkFlow 是一个轻量的原生 macOS 菜单栏水印工具。复制图�
 7. 高频操作可直接使用已设置的快捷键；也可从菜单栏子菜单选择任意模板快速处理。
 8. 需要更换快捷键时，在右侧“快捷操作”点击录制框并按下新组合键。
 
-详细说明见 [安装文档](docs/INSTALL.md)、[v0.2.2 PRD](docs/prd/v0.2.2/prd.md) 和 [v0.2.2 测试报告](docs/testing/v0.2.2-test-report.md)。
+详细说明见 [安装文档](docs/INSTALL.md)、[v0.2.3 PRD](docs/prd/v0.2.3/prd.md) 和 [v0.2.3 测试报告](docs/testing/v0.2.3-test-report.md)。
+
+## 开源许可
+
+WatermarkFlow 使用 [MIT License](LICENSE)。Copyright (c) 2026 wlzh。

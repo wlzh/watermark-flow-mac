@@ -71,6 +71,8 @@ runner.test("application identity links are stable") {
     try expect(AppVersion.authorProfileURL == "https://x.com/wlzh", "author profile URL changed")
     try expect(URL(string: AppVersion.authorProfileURL)?.scheme == "https", "author profile URL is invalid")
     try expect(AppVersion.websiteURL == "https://869hr.uk", "website URL changed")
+    try expect(AppVersion.licenseName == "MIT License", "license name changed")
+    try expect(URL(string: AppVersion.licenseURL)?.scheme == "https", "license URL is invalid")
 }
 
 runner.test("built-in templates are stable") {
