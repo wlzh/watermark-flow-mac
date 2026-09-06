@@ -11,7 +11,7 @@ cd /Users/m/document/QNSZ/project/watermark-flow-mac
 
 ## 从 GitHub Release 安装
 
-1. 从 [Releases](https://github.com/wlzh/watermark-flow-mac/releases) 下载当前版本的 `WatermarkFlow-v0.2.2-macos-universal.zip` 和 `SHA256.txt`。
+1. 从 [Releases](https://github.com/wlzh/watermark-flow-mac/releases) 下载当前版本的 `WatermarkFlow-v0.2.3-macos-universal.zip` 和 `SHA256.txt`。
 2. 解压后把 `WatermarkFlow.app` 移到“应用程序”。
 3. 当前版本尚未进行 Apple notarization。首次启动如果被 Gatekeeper 拦截，在 Finder 中按住 Control 点击应用并选择“打开”。
 4. 高级用户可先用 `shasum -a 256` 对照 `SHA256.txt` 验证下载完整性。
@@ -43,3 +43,7 @@ defaults delete com.wlzh.WatermarkFlow 2>/dev/null || true
 ## 分发限制
 
 当前 Release 使用 ad-hoc 签名，提供 Apple Silicon 与 Intel 双架构应用，但不能建立 Apple 的开发者信任链。面向非技术用户进行低摩擦分发前，仍需 Apple Developer ID Application 签名和 notarization。
+
+## 开源许可
+
+源码和安装包均附带 MIT License。安装包内许可文件位于 `WatermarkFlow.app/Contents/Resources/LICENSE.txt`。

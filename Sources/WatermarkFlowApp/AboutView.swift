@@ -45,6 +45,10 @@ struct AboutView: View {
             Text("图片仅在本机处理，不会上传网络")
                 .font(.system(size: 11))
                 .foregroundStyle(theme.textSecondary)
+
+            Link(AppVersion.licenseName, destination: URL(string: AppVersion.licenseURL)!)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(theme.accent)
         }
         .frame(width: 420, height: 330)
         .background(theme.background)

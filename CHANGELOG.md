@@ -2,6 +2,14 @@
 
 所有重要变更均记录在此文件，版本号遵循 Semantic Versioning。
 
+## [0.2.3] - 2026-09-06
+
+### Added
+
+- 项目采用 MIT License，仓库根目录增加标准 `LICENSE` 文件。
+- About 窗口增加 MIT License 链接，应用元数据增加许可证字段。
+- macOS 安装包内置 `Contents/Resources/LICENSE.txt`，构建门禁校验仓库与包内许可文本一致。
+
 ## [0.2.2] - 2026-09-06
 
 ### Added
