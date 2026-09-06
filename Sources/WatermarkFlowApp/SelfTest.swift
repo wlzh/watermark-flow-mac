@@ -113,7 +113,32 @@ enum SelfTest {
             throw Failure("pasteboard server round-trip failed")
         }
 
+        let appDelegate = AppDelegate(viewModel: restoredEditor)
+        let emptyExportItem = NSMenuItem(
+            title: "Export",
+            action: #selector(AppDelegate.exportImage),
+            keyEquivalent: ""
+        )
+        let emptyClearItem = NSMenuItem(
+            title: "Clear",
+            action: #selector(AppDelegate.clearCanvas),
+            keyEquivalent: ""
+        )
+        guard !appDelegate.validateMenuItem(emptyExportItem),
+              !appDelegate.validateMenuItem(emptyClearItem) else {
+            throw Failure("empty-canvas menu validation failed")
+        }
+        let quickMenu = appDelegate.makeQuickTemplateMenu()
+        guard quickMenu.items.map(\.title) == restoredEditor.templates.map(\.name),
+              quickMenu.items.count == 4,
+              quickMenu.items.filter({ $0.state == .on }).count == 1,
+              quickMenu.items.first(where: { $0.state == .on })?.representedObject as? String
+                == restoredEditor.defaultTemplateID.uuidString else {
+            throw Failure("dynamic quick-template menu failed")
+        }
+
         print("SELF_TEST_VERSION=\(AppVersion.current)")
+        print("SELF_TEST_BUILD=\(AppVersion.build)")
         print("SELF_TEST_TEMPLATES=\(DefaultTemplates.all.count)")
         print("SELF_TEST_RENDER=PASS 960x540")
         print("SELF_TEST_PERSISTENCE=PASS")
@@ -124,6 +149,8 @@ enum SelfTest {
         print("SELF_TEST_CUSTOM_HOTKEY=PASS value=\(customHotKey.displayName)")
         print("SELF_TEST_HOTKEY_RECORDER=PASS")
         print("SELF_TEST_PASTEBOARD_SERVER=PASS changeCount=\(changeCount)")
+        print("SELF_TEST_EMPTY_MENU_VALIDATION=PASS")
+        print("SELF_TEST_QUICK_TEMPLATE_MENU=PASS items=\(quickMenu.items.count)")
     }
 
     private static func makeSourceImage(width: Int, height: Int) throws -> NSImage {

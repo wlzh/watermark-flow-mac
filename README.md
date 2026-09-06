@@ -48,4 +48,4 @@ WatermarkFlow 是一个轻量的原生 macOS 菜单栏水印工具。复制图�
 5. 高频操作可直接使用已设置的快捷键；也可从菜单栏子菜单选择任意模板快速处理。
 6. 需要更换快捷键时，在右侧“快捷操作”点击录制框并按下新组合键。
 
-详细说明见 [安装文档](docs/INSTALL.md)、[v0.2.0 PRD](docs/prd/v0.2.0/prd.md) 和 [v0.2.0 测试报告](docs/testing/v0.2.0-test-report.md)。
+详细说明见 [安装文档](docs/INSTALL.md)、[v0.2.1 PRD](docs/prd/v0.2.1/prd.md) 和 [v0.2.1 测试报告](docs/testing/v0.2.1-test-report.md)。

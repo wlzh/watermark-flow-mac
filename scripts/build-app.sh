@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VERSION="$(tr -d '[:space:]' < "$ROOT/VERSION")"
+BUILD_NUMBER="$(tr -d '[:space:]' < "$ROOT/BUILD_NUMBER")"
 APP="$ROOT/dist/WatermarkFlow.app"
 CONTENTS="$APP/Contents"
 
@@ -18,6 +19,7 @@ lipo -create \
     -output "$CONTENTS/MacOS/WatermarkFlow"
 cp "$ROOT/Resources/Info.plist" "$CONTENTS/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$CONTENTS/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$CONTENTS/Info.plist"
 
 ICONSET="$(mktemp -d)/AppIcon.iconset"
 swift "$ROOT/scripts/generate-icon.swift" "$ICONSET"
@@ -30,4 +32,5 @@ codesign --verify --deep --strict "$APP"
 echo "BUILD_APP=PASS"
 echo "APP_PATH=$APP"
 echo "APP_VERSION=$VERSION"
+echo "APP_BUILD=$BUILD_NUMBER"
 echo "APP_ARCHITECTURES=$(lipo -archs "$CONTENTS/MacOS/WatermarkFlow")"

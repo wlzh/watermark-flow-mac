@@ -112,6 +112,47 @@ public enum WatermarkRenderer {
         return data
     }
 
+    public static func normalizedLogoPNG(
+        image: NSImage,
+        maxPixelDimension: Int = 1_024
+    ) throws -> Data {
+        guard maxPixelDimension > 0,
+              let source = pixelCGImage(from: image) else {
+            throw WatermarkRenderError.invalidSourceImage
+        }
+
+        let sourceMax = max(source.width, source.height)
+        guard sourceMax > maxPixelDimension else {
+            return try encode(image: image, format: .png)
+        }
+
+        let scale = Double(maxPixelDimension) / Double(sourceMax)
+        let width = max(1, Int((Double(source.width) * scale).rounded()))
+        let height = max(1, Int((Double(source.height) * scale).rounded()))
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+        guard let context = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            throw WatermarkRenderError.contextCreationFailed
+        }
+
+        context.interpolationQuality = .high
+        context.draw(source, in: CGRect(x: 0, y: 0, width: width, height: height))
+        guard let result = context.makeImage() else {
+            throw WatermarkRenderError.outputCreationFailed
+        }
+        return try encode(
+            image: NSImage(cgImage: result, size: NSSize(width: width, height: height)),
+            format: .png
+        )
+    }
+
     public static func pixelSize(of image: NSImage) -> CGSize? {
         guard let image = pixelCGImage(from: image) else { return nil }
         return CGSize(width: image.width, height: image.height)
