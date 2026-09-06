@@ -205,7 +205,7 @@ struct EditorView: View {
                 .buttonStyle(OutlineButtonStyle(ink: ink))
                 .disabled(viewModel.sourceImage == nil)
             Spacer()
-            Text("拖动预览图可定位")
+            Text("拖动可定位 · 模板修改自动保存")
                 .font(.system(size: 11))
                 .foregroundStyle(ink.opacity(0.5))
             Button("生成并复制") { viewModel.generateAndCopy() }

@@ -3,10 +3,8 @@ import Foundation
 import WatermarkCore
 
 enum SelfTest {
+    @MainActor
     static func run() throws {
-        let pasteboardSnapshot = PasteboardSnapshot(pasteboard: .general)
-        defer { pasteboardSnapshot.restore(to: .general) }
-
         let source = try makeSourceImage(width: 960, height: 540)
         for template in DefaultTemplates.all {
             let output = try WatermarkRenderer.render(source: source, template: template)
@@ -31,19 +29,40 @@ enum SelfTest {
             throw Failure("template persistence mismatch")
         }
 
+        let defaultsName = "WatermarkFlow.SelfTest.\(UUID().uuidString)"
+        guard let isolatedDefaults = UserDefaults(suiteName: defaultsName) else {
+            throw Failure("unable to create isolated defaults")
+        }
+        defer { isolatedDefaults.removePersistentDomain(forName: defaultsName) }
+        let editor = EditorViewModel(repository: repository, defaults: isolatedDefaults)
+        editor.workingTemplate.text = "@automatic"
+        editor.workingTemplate.position = NormalizedPoint(x: 0.31, y: 0.42)
+        editor.workingTemplate.backgroundColor = RGBAColor(hex: 0x245f73, alpha: 0.67)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+        let restoredEditor = EditorViewModel(repository: repository, defaults: isolatedDefaults)
+        guard restoredEditor.workingTemplate.text == "@automatic",
+              restoredEditor.workingTemplate.position == NormalizedPoint(x: 0.31, y: 0.42),
+              restoredEditor.workingTemplate.backgroundColor == RGBAColor(hex: 0x245f73, alpha: 0.67),
+              restoredEditor.selectedTemplateID == editor.selectedTemplateID else {
+            throw Failure("automatic editor persistence failed")
+        }
+
         let output = try WatermarkRenderer.render(source: source, template: DefaultTemplates.all[0])
-        let changeCount = try ClipboardService.writeImage(output)
-        let reread = try ClipboardService.readImage()
+        let pasteboard = NSPasteboard(name: NSPasteboard.Name("WatermarkFlow.SelfTest.\(UUID().uuidString)"))
+        defer { pasteboard.releaseGlobally() }
+        let changeCount = try ClipboardService.writeImage(output, to: pasteboard)
+        let reread = try ClipboardService.readImage(from: pasteboard)
         guard changeCount > 0,
               WatermarkRenderer.pixelSize(of: reread) == CGSize(width: 960, height: 540) else {
-            throw Failure("general pasteboard round-trip failed")
+            throw Failure("pasteboard server round-trip failed")
         }
 
         print("SELF_TEST_VERSION=\(AppVersion.current)")
         print("SELF_TEST_TEMPLATES=\(DefaultTemplates.all.count)")
         print("SELF_TEST_RENDER=PASS 960x540")
         print("SELF_TEST_PERSISTENCE=PASS")
-        print("SELF_TEST_GENERAL_PASTEBOARD=PASS changeCount=\(changeCount)")
+        print("SELF_TEST_AUTOSAVE_RESTART=PASS")
+        print("SELF_TEST_PASTEBOARD_SERVER=PASS changeCount=\(changeCount)")
     }
 
     private static func makeSourceImage(width: Int, height: Int) throws -> NSImage {
@@ -76,26 +95,4 @@ enum SelfTest {
         var errorDescription: String? { message }
     }
 
-    private struct PasteboardSnapshot {
-        let items: [NSPasteboardItem]
-
-        init(pasteboard: NSPasteboard) {
-            items = (pasteboard.pasteboardItems ?? []).map { source in
-                let copy = NSPasteboardItem()
-                for type in source.types {
-                    if let data = source.data(forType: type) {
-                        copy.setData(data, forType: type)
-                    }
-                }
-                return copy
-            }
-        }
-
-        func restore(to pasteboard: NSPasteboard) {
-            pasteboard.clearContents()
-            if !items.isEmpty {
-                pasteboard.writeObjects(items)
-            }
-        }
-    }
 }

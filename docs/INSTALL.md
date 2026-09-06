@@ -35,4 +35,4 @@ defaults delete com.wlzh.WatermarkFlow 2>/dev/null || true
 
 ## 分发限制
 
-`v0.1.0` 使用 ad-hoc 签名，仅用于当前 Mac 本地安装测试。面向其他 Mac 分发时，应补充 Apple Developer ID Application 签名和 notarization。
+当前本地版本使用 ad-hoc 签名，仅用于当前 Mac 安装测试。面向其他 Mac 分发时，应补充 Apple Developer ID Application 签名和 notarization。
