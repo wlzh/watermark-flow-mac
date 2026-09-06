@@ -11,14 +11,17 @@ swift run WatermarkFlowTests
 
 VERSION="$(plutil -extract CFBundleShortVersionString raw "$APP/Contents/Info.plist")"
 AUTHOR="$(plutil -extract Author raw "$APP/Contents/Info.plist")"
+AUTHOR_URL="$(plutil -extract AuthorURL raw "$APP/Contents/Info.plist")"
 WEBSITE="$(plutil -extract Website raw "$APP/Contents/Info.plist")"
 codesign --verify --deep --strict "$APP"
 
 test "$VERSION" = "$(tr -d '[:space:]' < "$ROOT/VERSION")"
 test "$AUTHOR" = "X @wlzh"
+test "$AUTHOR_URL" = "https://x.com/wlzh"
 test "$WEBSITE" = "https://869hr.uk"
 
 echo "TEST_ALL=PASS"
 echo "VERIFIED_VERSION=$VERSION"
 echo "VERIFIED_AUTHOR=$AUTHOR"
+echo "VERIFIED_AUTHOR_URL=$AUTHOR_URL"
 echo "VERIFIED_WEBSITE=$WEBSITE"

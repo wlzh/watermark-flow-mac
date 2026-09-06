@@ -2,7 +2,7 @@
 
 WatermarkFlow 是一个轻量的原生 macOS 菜单栏水印工具。复制图片后，可以直接套用默认模板，也可以在非破坏式编辑会话中调整水印，再把合成结果复制回系统剪贴板。
 
-- 作者：X @wlzh
+- 作者：[X @wlzh](https://x.com/wlzh)
 - 网站：[https://869hr.uk](https://869hr.uk)
 
 ## 当前功能

@@ -33,10 +33,11 @@ struct AboutView: View {
                 HStack(spacing: 7) {
                     Text("作者")
                         .foregroundStyle(ink.opacity(0.5))
-                    Text("X @wlzh")
+                    Link(AppVersion.author, destination: URL(string: AppVersion.authorProfileURL)!)
                         .fontWeight(.semibold)
+                        .foregroundStyle(accent)
                 }
-                Link("https://869hr.uk", destination: URL(string: "https://869hr.uk")!)
+                Link(AppVersion.websiteURL, destination: URL(string: AppVersion.websiteURL)!)
                     .foregroundStyle(accent)
             }
             .font(.system(size: 13))
