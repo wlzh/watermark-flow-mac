@@ -196,6 +196,23 @@ runner.test("all built-in templates preserve source pixels") {
     }
 }
 
+runner.test("preview limits work while full render preserves pixels") {
+    let source = try sampleImage(width: 4_000, height: 3_000)
+    let previewStarted = Date()
+    let preview = try WatermarkRenderer.renderPreview(
+        source: source,
+        template: DefaultTemplates.all[0],
+        maxPixelDimension: 1_200
+    )
+    let previewMilliseconds = Date().timeIntervalSince(previewStarted) * 1_000
+    let fullStarted = Date()
+    let full = try WatermarkRenderer.render(source: source, template: DefaultTemplates.all[0])
+    let fullMilliseconds = Date().timeIntervalSince(fullStarted) * 1_000
+    try expect(WatermarkRenderer.pixelSize(of: preview) == CGSize(width: 1_200, height: 900), "preview size mismatch")
+    try expect(WatermarkRenderer.pixelSize(of: full) == CGSize(width: 4_000, height: 3_000), "full render lost pixels")
+    print(String(format: "PERF preview_4k_ms=%.1f full_render_4k_ms=%.1f", previewMilliseconds, fullMilliseconds))
+}
+
 runner.test("text and custom logo render to PNG and JPEG") {
     let source = try sampleImage(width: 640, height: 360)
     var textTemplate = DefaultTemplates.all[0]

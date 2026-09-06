@@ -3,17 +3,33 @@ import SwiftUI
 import WatermarkCore
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate {
     private let viewModel = EditorViewModel()
     private var windowController: NSWindowController?
     private var aboutWindowController: NSWindowController?
     private var statusItem: NSStatusItem?
     private var globalHotKey: GlobalHotKey?
+    private var quickTemplateMenu: NSMenu?
+    private var defaultQuickMenuItem: NSMenuItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         configureMainMenu()
+        let requestedHotKey = viewModel.hotKeyConfiguration
+        globalHotKey = GlobalHotKey(configuration: requestedHotKey) { [weak self] in
+            self?.quickApply()
+        }
+        if globalHotKey?.isRegistered != true {
+            if requestedHotKey != .default,
+               globalHotKey?.update(configuration: .default) == true {
+                viewModel.adoptStartupHotKeyFallback(.default)
+            } else {
+                viewModel.reportStartupHotKeyFailure()
+            }
+        }
         configureStatusItem()
-        globalHotKey = GlobalHotKey { [weak self] in self?.quickApply() }
+        viewModel.hotKeyRegistrationHandler = { [weak self] configuration in
+            self?.updateGlobalHotKey(configuration) ?? false
+        }
         showEditor()
     }
 
@@ -35,6 +51,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 defer: false
             )
             window.title = "WatermarkFlow"
+            window.isRestorable = false
             window.minSize = NSSize(width: 900, height: 620)
             window.center()
             window.isReleasedWhenClosed = false
@@ -68,9 +85,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         viewModel.generateAndCopy()
     }
 
+    @objc func clearCanvas() {
+        showEditor()
+        viewModel.clearCanvas()
+    }
+
     @objc func quickApply() {
+        performQuickApply(templateID: viewModel.defaultTemplateID)
+    }
+
+    @objc func quickApplyTemplate(_ sender: NSMenuItem) {
+        guard let value = sender.representedObject as? String,
+              let templateID = UUID(uuidString: value) else { return }
+        performQuickApply(templateID: templateID)
+    }
+
+    private func performQuickApply(templateID: UUID) {
         do {
-            _ = try viewModel.quickApplyDefaultToClipboard()
+            _ = try viewModel.quickApplyTemplateToClipboard(id: templateID)
             flashStatus(symbol: "checkmark.seal.fill")
             NSSound(named: "Tink")?.play()
         } catch {
@@ -90,6 +122,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 defer: false
             )
             window.title = "关于 WatermarkFlow"
+            window.isRestorable = false
             window.titlebarAppearsTransparent = true
             window.isReleasedWhenClosed = false
             window.center()
@@ -108,14 +141,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func configureStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         item.button?.image = NSImage(systemSymbolName: "seal.fill", accessibilityDescription: "WatermarkFlow")
-        item.button?.toolTip = "WatermarkFlow · ⌥⌘W 快速加水印"
+        item.button?.toolTip = "WatermarkFlow · \(viewModel.hotKeyConfiguration.displayName) 快速加水印"
 
         let menu = NSMenu()
         menu.addItem(menuItem("打开编辑器", action: #selector(showEditor)))
         menu.addItem(menuItem("从剪贴板载入并编辑", action: #selector(pasteAndEdit)))
-        let quick = menuItem("默认模板快速生成并复制", action: #selector(quickApply), key: "w")
-        quick.keyEquivalentModifierMask = [.command, .option]
+        let quick = NSMenuItem(title: "选择模板快速生成并复制", action: nil, keyEquivalent: "")
+        let submenu = NSMenu(title: "选择模板快速生成并复制")
+        submenu.delegate = self
+        quick.submenu = submenu
+        quickTemplateMenu = submenu
+        rebuildQuickTemplateMenu()
         menu.addItem(quick)
+        let defaultQuick = menuItem(
+            "使用默认模板 · \(viewModel.hotKeyConfiguration.displayName)",
+            action: #selector(quickApply)
+        )
+        defaultQuickMenuItem = defaultQuick
+        menu.addItem(defaultQuick)
         menu.addItem(.separator())
         menu.addItem(menuItem("关于 WatermarkFlow", action: #selector(showAbout)))
         menu.addItem(menuItem("退出", action: #selector(quit), key: "q"))
@@ -140,6 +183,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         fileMenu.addItem(menuItem("从剪贴板载入", action: #selector(pasteAndEdit)))
         fileMenu.addItem(menuItem("导出文件…", action: #selector(exportImage), key: "e"))
         fileMenu.addItem(menuItem("生成并复制", action: #selector(generateAndCopy), key: "\r"))
+        fileMenu.addItem(.separator())
+        let clear = menuItem("清空图片与水印画布", action: #selector(clearCanvas), key: "\u{8}")
+        clear.keyEquivalentModifierMask = [.command]
+        fileMenu.addItem(clear)
         fileItem.submenu = fileMenu
         main.addItem(fileItem)
 
@@ -164,6 +211,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
         item.target = self
         return item
+    }
+
+    func menuWillOpen(_ menu: NSMenu) {
+        if menu === quickTemplateMenu {
+            rebuildQuickTemplateMenu()
+        }
+    }
+
+    private func rebuildQuickTemplateMenu() {
+        guard let menu = quickTemplateMenu else { return }
+        menu.removeAllItems()
+        for template in viewModel.templates {
+            let item = menuItem(template.name, action: #selector(quickApplyTemplate(_:)))
+            item.representedObject = template.id.uuidString
+            item.state = template.id == viewModel.defaultTemplateID ? .on : .off
+            menu.addItem(item)
+        }
+    }
+
+    private func updateGlobalHotKey(_ configuration: HotKeyConfiguration) -> Bool {
+        guard globalHotKey?.update(configuration: configuration) == true else { return false }
+        defaultQuickMenuItem?.title = "使用默认模板 · \(configuration.displayName)"
+        statusItem?.button?.toolTip = "WatermarkFlow · \(configuration.displayName) 快速加水印"
+        return true
     }
 
     private func flashStatus(symbol: String) {
