@@ -99,6 +99,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         viewModel.clearCanvas()
     }
 
+    @objc func toggleCurrentWatermark() {
+        showEditor()
+        viewModel.toggleCurrentWatermark()
+    }
+
+    @objc func zoomIn() {
+        showEditor()
+        viewModel.zoomIn()
+    }
+
+    @objc func zoomOut() {
+        showEditor()
+        viewModel.zoomOut()
+    }
+
+    @objc func resetCanvasZoom() {
+        showEditor()
+        viewModel.resetCanvasZoom()
+    }
+
     @objc func quickApply() {
         performQuickApply(templateID: viewModel.defaultTemplateID)
     }
@@ -192,6 +212,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         fileMenu.addItem(menuItem("导出文件…", action: #selector(exportImage), key: "e"))
         fileMenu.addItem(menuItem("生成并复制", action: #selector(generateAndCopy), key: "\r"))
         fileMenu.addItem(.separator())
+        fileMenu.addItem(menuItem("移除当前水印", action: #selector(toggleCurrentWatermark)))
         let clear = menuItem("清空图片与水印画布", action: #selector(clearCanvas), key: "\u{8}")
         clear.keyEquivalentModifierMask = [.command]
         fileMenu.addItem(clear)
@@ -212,6 +233,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         editMenu.addItem(NSMenuItem(title: "全选", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
         editItem.submenu = editMenu
         main.addItem(editItem)
+
+        let viewItem = NSMenuItem()
+        viewItem.title = "显示"
+        let viewMenu = NSMenu(title: "显示")
+        let zoomInItem = menuItem("放大", action: #selector(zoomIn), key: "+")
+        viewMenu.addItem(zoomInItem)
+        viewMenu.addItem(menuItem("缩小", action: #selector(zoomOut), key: "-"))
+        viewMenu.addItem(menuItem("适合窗口", action: #selector(resetCanvasZoom), key: "0"))
+        viewItem.submenu = viewMenu
+        main.addItem(viewItem)
         NSApp.mainMenu = main
     }
 
@@ -255,8 +286,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
+        case #selector(toggleCurrentWatermark):
+            menuItem.title = viewModel.isWatermarkEnabled ? "移除当前水印" : "添加所选模板水印"
+            return viewModel.sourceImage != nil
         case #selector(exportImage), #selector(generateAndCopy), #selector(clearCanvas):
             return viewModel.sourceImage != nil
+        case #selector(zoomIn):
+            return viewModel.sourceImage != nil && viewModel.canvasZoom < 10
+        case #selector(zoomOut):
+            return viewModel.sourceImage != nil && viewModel.canvasZoom > 0.25
+        case #selector(resetCanvasZoom):
+            return viewModel.sourceImage != nil && viewModel.canvasZoom != 1
         default:
             return true
         }

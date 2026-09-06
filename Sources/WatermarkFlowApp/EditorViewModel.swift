@@ -8,11 +8,15 @@ import WatermarkCore
 final class EditorViewModel: ObservableObject {
     @Published private(set) var sourceImage: NSImage?
     @Published private(set) var previewImage: NSImage?
+    @Published private(set) var isWatermarkEnabled = true
+    @Published private(set) var canvasZoom = 1.0
     @Published private(set) var templates: [WatermarkTemplate]
     @Published var selectedTemplateID: UUID
     @Published var workingTemplate: WatermarkTemplate {
         didSet {
-            refreshPreview()
+            if isWatermarkEnabled {
+                refreshPreview()
+            }
             scheduleAutomaticPersistence()
         }
     }
@@ -63,11 +67,20 @@ final class EditorViewModel: ObservableObject {
         return "\(Int(size.width)) × \(Int(size.height)) px"
     }
 
+    var canvasZoomDescription: String {
+        "\(Int((canvasZoom * 100).rounded()))%"
+    }
+
+    var canvasZoomOptions: [Double] {
+        Self.canvasZoomLevels
+    }
+
     func selectTemplate(id: UUID) {
         guard templates.contains(where: { $0.id == id }) else { return }
         flushPersistence()
         guard let template = templates.first(where: { $0.id == id }) else { return }
         persistenceEnabled = false
+        isWatermarkEnabled = true
         selectedTemplateID = id
         workingTemplate = template
         persistenceEnabled = true
@@ -80,7 +93,7 @@ final class EditorViewModel: ObservableObject {
     }
 
     func updateWatermarkDrag(translation: CGSize, canvasSize: CGSize) {
-        guard canvasSize.width > 0, canvasSize.height > 0 else { return }
+        guard isWatermarkEnabled, canvasSize.width > 0, canvasSize.height > 0 else { return }
         if dragStartPosition == nil {
             dragStartPosition = workingTemplate.position
         }
@@ -94,6 +107,39 @@ final class EditorViewModel: ObservableObject {
     func endWatermarkDrag() {
         dragStartPosition = nil
         flushPersistence(showStatus: true)
+    }
+
+    func zoomIn() {
+        guard sourceImage != nil else { return }
+        let levels = Self.canvasZoomLevels
+        canvasZoom = levels.first(where: { $0 > canvasZoom + 0.001 }) ?? levels.last!
+        refreshPreview()
+        statusMessage = "画布缩放：\(canvasZoomDescription)"
+    }
+
+    func zoomOut() {
+        guard sourceImage != nil else { return }
+        let levels = Self.canvasZoomLevels
+        canvasZoom = levels.last(where: { $0 < canvasZoom - 0.001 }) ?? levels.first!
+        refreshPreview()
+        statusMessage = "画布缩放：\(canvasZoomDescription)"
+    }
+
+    func resetCanvasZoom() {
+        guard sourceImage != nil else { return }
+        canvasZoom = 1
+        refreshPreview()
+        statusMessage = "画布已适合窗口：100%"
+    }
+
+    func setCanvasZoom(_ zoom: Double) {
+        guard sourceImage != nil,
+              Self.canvasZoomLevels.contains(where: { abs($0 - zoom) < 0.001 }) else { return }
+        canvasZoom = zoom
+        refreshPreview()
+        statusMessage = zoom == 1
+            ? "画布已适合窗口：100%"
+            : "画布缩放：\(canvasZoomDescription)"
     }
 
     func loadFromClipboard() {
@@ -149,9 +195,11 @@ final class EditorViewModel: ObservableObject {
 
     func generateAndCopy() {
         do {
-            let output = try renderFullResolution()
+            let output = try renderCurrentOutput()
             try ClipboardService.writeImage(output)
-            statusMessage = "已生成并复制，可直接粘贴 · \(sourcePixelDescription)"
+            statusMessage = isWatermarkEnabled
+                ? "已生成并复制，可直接粘贴 · \(sourcePixelDescription)"
+                : "已复制无水印原图 · \(sourcePixelDescription)"
             NSSound(named: "Tink")?.play()
         } catch {
             statusMessage = error.localizedDescription
@@ -181,12 +229,12 @@ final class EditorViewModel: ObservableObject {
 
     func exportImage() {
         do {
-            let output = try renderFullResolution()
+            let output = try renderCurrentOutput()
             let panel = NSSavePanel()
             panel.allowedContentTypes = [.png, .jpeg]
             panel.nameFieldStringValue = "watermarked.png"
             panel.canCreateDirectories = true
-            panel.message = "导出带水印的扁平图片"
+            panel.message = isWatermarkEnabled ? "导出带水印的扁平图片" : "导出当前无水印原图"
             guard panel.runModal() == .OK, let url = panel.url else { return }
             let format: ImageOutputFormat = url.pathExtension.lowercased().hasPrefix("jp") ? .jpeg : .png
             let data = try WatermarkRenderer.encode(image: output, format: format)
@@ -244,6 +292,7 @@ final class EditorViewModel: ObservableObject {
         templates.removeAll { $0.id == selectedTemplateID }
         let fallback = templates.first { $0.id == DefaultTemplates.xWLZHID } ?? DefaultTemplates.all[0]
         persistenceEnabled = false
+        isWatermarkEnabled = true
         selectedTemplateID = fallback.id
         workingTemplate = fallback
         persistenceEnabled = true
@@ -257,8 +306,41 @@ final class EditorViewModel: ObservableObject {
     func clearCanvas() {
         sourceImage = nil
         previewImage = nil
+        isWatermarkEnabled = true
+        canvasZoom = 1
         dragStartPosition = nil
         statusMessage = "已清空当前图片与水印画布，模板设置已保留"
+    }
+
+    func removeCurrentWatermark() {
+        guard sourceImage != nil else {
+            statusMessage = "请先载入图片"
+            return
+        }
+        guard isWatermarkEnabled else { return }
+        isWatermarkEnabled = false
+        dragStartPosition = nil
+        refreshPreview()
+        statusMessage = "已移除当前水印，原图和模板设置已保留"
+    }
+
+    func addSelectedWatermark() {
+        guard sourceImage != nil else {
+            statusMessage = "请先载入图片"
+            return
+        }
+        guard !isWatermarkEnabled else { return }
+        isWatermarkEnabled = true
+        refreshPreview()
+        statusMessage = "已添加所选水印：\(workingTemplate.name)"
+    }
+
+    func toggleCurrentWatermark() {
+        if isWatermarkEnabled {
+            removeCurrentWatermark()
+        } else {
+            addSelectedWatermark()
+        }
     }
 
     func updateHotKey(_ configuration: HotKeyConfiguration) {
@@ -301,6 +383,8 @@ final class EditorViewModel: ObservableObject {
     }
 
     private func loadImage(_ image: NSImage) {
+        isWatermarkEnabled = true
+        canvasZoom = 1
         sourceImage = image
         refreshPreview()
     }
@@ -311,19 +395,31 @@ final class EditorViewModel: ObservableObject {
             return
         }
         do {
-            previewImage = try WatermarkRenderer.renderPreview(
-                source: sourceImage,
-                template: workingTemplate
-            )
+            let previewLimit = min(6_000, max(1_200, Int((1_200 * canvasZoom).rounded())))
+            previewImage = if isWatermarkEnabled {
+                try WatermarkRenderer.renderPreview(
+                    source: sourceImage,
+                    template: workingTemplate,
+                    maxPixelDimension: previewLimit
+                )
+            } else {
+                try WatermarkRenderer.renderSourcePreview(
+                    source: sourceImage,
+                    maxPixelDimension: previewLimit
+                )
+            }
         } catch {
             previewImage = nil
             statusMessage = error.localizedDescription
         }
     }
 
-    private func renderFullResolution() throws -> NSImage {
+    func renderCurrentOutput() throws -> NSImage {
         guard let sourceImage else { throw ClipboardError.noImage }
-        return try WatermarkRenderer.render(source: sourceImage, template: workingTemplate)
+        if isWatermarkEnabled {
+            return try WatermarkRenderer.render(source: sourceImage, template: workingTemplate)
+        }
+        return try WatermarkRenderer.renderSource(source: sourceImage)
     }
 
     private func scheduleAutomaticPersistence() {
@@ -365,6 +461,8 @@ final class EditorViewModel: ObservableObject {
             statusMessage = "保存模板失败：\(error.localizedDescription)"
         }
     }
+
+    private static let canvasZoomLevels = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4, 5, 7.5, 10]
 }
 
 private enum QuickApplyError: LocalizedError {

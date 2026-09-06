@@ -213,6 +213,42 @@ runner.test("preview limits work while full render preserves pixels") {
     print(String(format: "PERF preview_4k_ms=%.1f full_render_4k_ms=%.1f", previewMilliseconds, fullMilliseconds))
 }
 
+runner.test("source-only render supports reversible watermark removal") {
+    let source = try sampleImage(width: 1_600, height: 900)
+    let plain = try WatermarkRenderer.renderSource(source: source)
+    let preview = try WatermarkRenderer.renderSourcePreview(source: source, maxPixelDimension: 800)
+    let watermarked = try WatermarkRenderer.render(source: source, template: DefaultTemplates.all[0])
+    let plainPNG = try WatermarkRenderer.encode(image: plain, format: .png)
+    let watermarkedPNG = try WatermarkRenderer.encode(image: watermarked, format: .png)
+
+    try expect(WatermarkRenderer.pixelSize(of: plain) == CGSize(width: 1_600, height: 900), "source-only output changed dimensions")
+    try expect(WatermarkRenderer.pixelSize(of: preview) == CGSize(width: 800, height: 450), "source-only preview size mismatch")
+    try expect(plainPNG != watermarkedPNG, "removing watermark did not change output")
+}
+
+runner.test("high zoom preview is capped and never upscales source") {
+    let wideSource = try sampleImage(width: 7_000, height: 700)
+    let capped = try WatermarkRenderer.renderPreview(
+        source: wideSource,
+        template: DefaultTemplates.all[1],
+        maxPixelDimension: 6_000
+    )
+    try expect(
+        WatermarkRenderer.pixelSize(of: capped) == CGSize(width: 6_000, height: 600),
+        "high zoom preview did not respect pixel cap"
+    )
+
+    let smallSource = try sampleImage(width: 800, height: 600)
+    let unchanged = try WatermarkRenderer.renderSourcePreview(
+        source: smallSource,
+        maxPixelDimension: 6_000
+    )
+    try expect(
+        WatermarkRenderer.pixelSize(of: unchanged) == CGSize(width: 800, height: 600),
+        "preview should not upscale a smaller source"
+    )
+}
+
 runner.test("custom logos are bounded and keep transparency") {
     let largeLogo = try makeImage(width: 4_096, height: 2_048) { context in
         context.clear(CGRect(x: 0, y: 0, width: 4_096, height: 2_048))

@@ -56,30 +56,49 @@ struct EditorView: View {
             theme.canvas
             if let image = viewModel.previewImage {
                 GeometryReader { geometry in
-                    let rect = aspectFitRect(imageSize: image.size, container: geometry.size)
-                    Image(nsImage: image)
-                        .resizable()
-                        .interpolation(.high)
-                        .frame(width: rect.width, height: rect.height)
-                        .position(x: rect.midX, y: rect.midY)
-                        .shadow(color: .black.opacity(0.34), radius: 20, y: 8)
+                    let viewport = CGSize(
+                        width: max(1, geometry.size.width - 44),
+                        height: max(1, geometry.size.height - 44)
+                    )
+                    let fitted = aspectFitRect(imageSize: image.size, container: viewport).size
+                    let zoomed = CGSize(
+                        width: fitted.width * viewModel.canvasZoom,
+                        height: fitted.height * viewModel.canvasZoom
+                    )
+                    let content = CGSize(
+                        width: max(geometry.size.width, zoomed.width + 44),
+                        height: max(geometry.size.height, zoomed.height + 44)
+                    )
 
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .frame(width: rect.width, height: rect.height)
-                        .position(x: rect.midX, y: rect.midY)
-                        .gesture(
-                            DragGesture(minimumDistance: 3)
-                                .onChanged { value in
-                                    viewModel.updateWatermarkDrag(
-                                        translation: value.translation,
-                                        canvasSize: rect.size
-                                    )
-                                }
-                                .onEnded { _ in viewModel.endWatermarkDrag() }
-                        )
+                    ScrollView([.horizontal, .vertical]) {
+                        ZStack {
+                            Image(nsImage: image)
+                                .resizable()
+                                .interpolation(.high)
+                                .frame(width: zoomed.width, height: zoomed.height)
+                                .shadow(color: .black.opacity(0.34), radius: 20, y: 8)
+
+                            Color.clear
+                                .contentShape(Rectangle())
+                                .frame(width: zoomed.width, height: zoomed.height)
+                                .gesture(
+                                    DragGesture(minimumDistance: 3)
+                                        .onChanged { value in
+                                            viewModel.updateWatermarkDrag(
+                                                translation: value.translation,
+                                                canvasSize: zoomed
+                                            )
+                                        }
+                                        .onEnded { _ in viewModel.endWatermarkDrag() }
+                                )
+                        }
+                        .frame(width: content.width, height: content.height)
+                    }
+                    .overlay(alignment: .topTrailing) {
+                        zoomControls
+                            .padding(12)
+                    }
                 }
-                .padding(22)
             } else {
                 VStack(spacing: 14) {
                     Image(systemName: "photo.badge.plus")
@@ -95,6 +114,18 @@ struct EditorView: View {
             }
         }
         .contextMenu {
+            Button {
+                viewModel.toggleCurrentWatermark()
+            } label: {
+                Label(
+                    viewModel.isWatermarkEnabled ? "移除当前水印" : "添加所选模板水印",
+                    systemImage: viewModel.isWatermarkEnabled ? "eye.slash" : "eye"
+                )
+            }
+            .disabled(viewModel.sourceImage == nil)
+
+            Divider()
+
             Button(role: .destructive) {
                 viewModel.clearCanvas()
             } label: {
@@ -105,6 +136,57 @@ struct EditorView: View {
         .onDrop(of: [UTType.fileURL.identifier, UTType.image.identifier], isTargeted: nil) { providers in
             handleDrop(providers)
         }
+    }
+
+    private var zoomControls: some View {
+        HStack(spacing: 0) {
+            Button(action: viewModel.zoomOut) {
+                Image(systemName: "minus")
+                    .frame(width: 28, height: 26)
+            }
+            .buttonStyle(.plain)
+            .disabled(viewModel.canvasZoom <= 0.25)
+
+            Divider().frame(height: 18)
+
+            Menu {
+                ForEach(viewModel.canvasZoomOptions, id: \.self) { zoom in
+                    Button {
+                        viewModel.setCanvasZoom(zoom)
+                    } label: {
+                        if abs(viewModel.canvasZoom - zoom) < 0.001 {
+                            Label("\(Int(zoom * 100))%", systemImage: "checkmark")
+                        } else {
+                            Text("\(Int(zoom * 100))%")
+                        }
+                    }
+                }
+            } label: {
+                Text(viewModel.canvasZoomDescription)
+                    .monospacedDigit()
+                    .frame(minWidth: 48, minHeight: 26)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("选择缩放比例；100% 为适合窗口")
+
+            Divider().frame(height: 18)
+
+            Button(action: viewModel.zoomIn) {
+                Image(systemName: "plus")
+                    .frame(width: 28, height: 26)
+            }
+            .buttonStyle(.plain)
+            .disabled(viewModel.canvasZoom >= 10)
+        }
+        .font(.system(size: 11, weight: .semibold))
+        .foregroundStyle(theme.textPrimary)
+        .padding(.horizontal, 4)
+        .padding(.vertical, 3)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(theme.border))
+        .shadow(color: .black.opacity(0.22), radius: 8, y: 3)
     }
 
     private var inspector: some View {
@@ -121,6 +203,21 @@ struct EditorView: View {
                 }
                 .labelsHidden()
                 .controlSize(.large)
+
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(viewModel.isWatermarkEnabled ? theme.accent : theme.textSecondary)
+                        .frame(width: 7, height: 7)
+                    Text(viewModel.isWatermarkEnabled ? "当前水印已显示" : "当前图片无水印")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(theme.textSecondary)
+                    Spacer()
+                    Button(viewModel.isWatermarkEnabled ? "移除" : "添加所选水印") {
+                        viewModel.toggleCurrentWatermark()
+                    }
+                    .buttonStyle(outlineButtonStyle)
+                    .disabled(viewModel.sourceImage == nil)
+                }
 
                 Divider()
                 sectionTitle("内容")
@@ -228,11 +325,16 @@ struct EditorView: View {
             Button("导出文件…") { viewModel.exportImage() }
                 .buttonStyle(outlineButtonStyle)
                 .disabled(viewModel.sourceImage == nil)
+            Button(viewModel.isWatermarkEnabled ? "移除水印" : "添加所选水印") {
+                viewModel.toggleCurrentWatermark()
+            }
+            .buttonStyle(outlineButtonStyle)
+            .disabled(viewModel.sourceImage == nil)
             Button("清空画布") { viewModel.clearCanvas() }
                 .buttonStyle(outlineButtonStyle)
                 .disabled(viewModel.sourceImage == nil)
             Spacer()
-            Text("拖动可定位 · 模板修改自动保存")
+            Text(viewModel.isWatermarkEnabled ? "拖动可定位 · 模板修改自动保存" : "选择其他模板可直接替换")
                 .font(.system(size: 11))
                 .foregroundStyle(theme.textSecondary)
             Button("生成并复制") { viewModel.generateAndCopy() }

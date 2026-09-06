@@ -50,8 +50,53 @@ enum SelfTest {
 
         let sourceData = try WatermarkRenderer.encode(image: source, format: .png)
         restoredEditor.loadImageData(sourceData)
-        guard restoredEditor.sourceImage != nil, restoredEditor.previewImage != nil else {
+        guard restoredEditor.sourceImage != nil,
+              restoredEditor.previewImage != nil,
+              restoredEditor.isWatermarkEnabled else {
             throw Failure("editor image load failed")
+        }
+        restoredEditor.zoomIn()
+        guard restoredEditor.canvasZoom == 1.25,
+              restoredEditor.canvasZoomDescription == "125%" else {
+            throw Failure("canvas zoom-in failed")
+        }
+        restoredEditor.setCanvasZoom(3)
+        guard restoredEditor.canvasZoom == 3 else {
+            throw Failure("canvas percentage selection failed")
+        }
+        restoredEditor.zoomOut()
+        guard restoredEditor.canvasZoom == 2 else {
+            throw Failure("canvas zoom-out failed")
+        }
+        restoredEditor.resetCanvasZoom()
+        guard restoredEditor.canvasZoom == 1 else {
+            throw Failure("canvas fit reset failed")
+        }
+        restoredEditor.setCanvasZoom(10)
+        guard restoredEditor.canvasZoom == 10,
+              restoredEditor.canvasZoomDescription == "1000%" else {
+            throw Failure("canvas maximum zoom failed")
+        }
+        restoredEditor.resetCanvasZoom()
+        let watermarkedOutput = try restoredEditor.renderCurrentOutput()
+        restoredEditor.removeCurrentWatermark()
+        let sourceOnlyOutput = try restoredEditor.renderCurrentOutput()
+        guard !restoredEditor.isWatermarkEnabled,
+              restoredEditor.sourceImage != nil,
+              restoredEditor.previewImage != nil,
+              try WatermarkRenderer.encode(image: watermarkedOutput, format: .png)
+                != WatermarkRenderer.encode(image: sourceOnlyOutput, format: .png) else {
+            throw Failure("session watermark removal failed")
+        }
+        restoredEditor.addSelectedWatermark()
+        guard restoredEditor.isWatermarkEnabled else {
+            throw Failure("selected watermark restore failed")
+        }
+        restoredEditor.removeCurrentWatermark()
+        restoredEditor.selectTemplate(id: DefaultTemplates.youtubeDuanKuID)
+        guard restoredEditor.isWatermarkEnabled,
+              restoredEditor.selectedTemplateID == DefaultTemplates.youtubeDuanKuID else {
+            throw Failure("template selection did not replace removed watermark")
         }
         let quickOutput = try restoredEditor.renderForQuickApply(
             source: source,
@@ -124,8 +169,14 @@ enum SelfTest {
             action: #selector(AppDelegate.clearCanvas),
             keyEquivalent: ""
         )
+        let emptyWatermarkItem = NSMenuItem(
+            title: "Watermark",
+            action: #selector(AppDelegate.toggleCurrentWatermark),
+            keyEquivalent: ""
+        )
         guard !appDelegate.validateMenuItem(emptyExportItem),
-              !appDelegate.validateMenuItem(emptyClearItem) else {
+              !appDelegate.validateMenuItem(emptyClearItem),
+              !appDelegate.validateMenuItem(emptyWatermarkItem) else {
             throw Failure("empty-canvas menu validation failed")
         }
         let quickMenu = appDelegate.makeQuickTemplateMenu()
@@ -145,6 +196,9 @@ enum SelfTest {
         print("SELF_TEST_AUTOSAVE_RESTART=PASS")
         print("SELF_TEST_POSITION_RESTORE=PASS value=0.31,0.42")
         print("SELF_TEST_TEMPLATE_QUICK_RENDER=PASS")
+        print("SELF_TEST_REMOVE_RESTORE_WATERMARK=PASS")
+        print("SELF_TEST_TEMPLATE_REPLACEMENT=PASS")
+        print("SELF_TEST_CANVAS_ZOOM=PASS range=25%-1000%")
         print("SELF_TEST_CLEAR_CANVAS=PASS templatesPreserved=4")
         print("SELF_TEST_CUSTOM_HOTKEY=PASS value=\(customHotKey.displayName)")
         print("SELF_TEST_HOTKEY_RECORDER=PASS")
