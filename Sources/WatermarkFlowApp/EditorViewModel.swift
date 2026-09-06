@@ -141,7 +141,7 @@ final class EditorViewModel: ObservableObject {
         guard panel.runModal() == .OK,
               let url = panel.url,
               let image = NSImage(contentsOf: url),
-              let data = try? WatermarkRenderer.encode(image: image, format: .png) else { return }
+              let data = try? WatermarkRenderer.normalizedLogoPNG(image: image) else { return }
         workingTemplate.brand = .custom
         workingTemplate.customLogoPNG = data
         statusMessage = "已载入自定义 Logo：\(url.lastPathComponent)"

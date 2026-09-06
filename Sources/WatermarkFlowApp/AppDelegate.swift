@@ -3,14 +3,23 @@ import SwiftUI
 import WatermarkCore
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate {
-    private let viewModel = EditorViewModel()
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuDelegate, NSMenuItemValidation {
+    private let viewModel: EditorViewModel
     private var windowController: NSWindowController?
     private var aboutWindowController: NSWindowController?
     private var statusItem: NSStatusItem?
     private var globalHotKey: GlobalHotKey?
     private var quickTemplateMenu: NSMenu?
     private var defaultQuickMenuItem: NSMenuItem?
+
+    override convenience init() {
+        self.init(viewModel: EditorViewModel())
+    }
+
+    init(viewModel: EditorViewModel) {
+        self.viewModel = viewModel
+        super.init()
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         configureMainMenu()
@@ -147,11 +156,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         menu.addItem(menuItem("打开编辑器", action: #selector(showEditor)))
         menu.addItem(menuItem("从剪贴板载入并编辑", action: #selector(pasteAndEdit)))
         let quick = NSMenuItem(title: "选择模板快速生成并复制", action: nil, keyEquivalent: "")
-        let submenu = NSMenu(title: "选择模板快速生成并复制")
-        submenu.delegate = self
+        let submenu = makeQuickTemplateMenu()
         quick.submenu = submenu
-        quickTemplateMenu = submenu
-        rebuildQuickTemplateMenu()
         menu.addItem(quick)
         let defaultQuick = menuItem(
             "使用默认模板 · \(viewModel.hotKeyConfiguration.displayName)",
@@ -180,7 +186,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         fileItem.title = "文件"
         let fileMenu = NSMenu(title: "文件")
         fileMenu.addItem(menuItem("打开图片…", action: #selector(openImage), key: "o"))
-        fileMenu.addItem(menuItem("从剪贴板载入", action: #selector(pasteAndEdit)))
+        let paste = menuItem("从剪贴板载入", action: #selector(pasteAndEdit), key: "v")
+        paste.keyEquivalentModifierMask = [.command, .shift]
+        fileMenu.addItem(paste)
         fileMenu.addItem(menuItem("导出文件…", action: #selector(exportImage), key: "e"))
         fileMenu.addItem(menuItem("生成并复制", action: #selector(generateAndCopy), key: "\r"))
         fileMenu.addItem(.separator())
@@ -213,6 +221,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         return item
     }
 
+    func makeQuickTemplateMenu() -> NSMenu {
+        let menu = NSMenu(title: "选择模板快速生成并复制")
+        menu.delegate = self
+        quickTemplateMenu = menu
+        rebuildQuickTemplateMenu()
+        return menu
+    }
+
     func menuWillOpen(_ menu: NSMenu) {
         if menu === quickTemplateMenu {
             rebuildQuickTemplateMenu()
@@ -235,6 +251,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         defaultQuickMenuItem?.title = "使用默认模板 · \(configuration.displayName)"
         statusItem?.button?.toolTip = "WatermarkFlow · \(configuration.displayName) 快速加水印"
         return true
+    }
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        switch menuItem.action {
+        case #selector(exportImage), #selector(generateAndCopy), #selector(clearCanvas):
+            return viewModel.sourceImage != nil
+        default:
+            return true
+        }
     }
 
     private func flashStatus(symbol: String) {

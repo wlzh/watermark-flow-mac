@@ -213,6 +213,40 @@ runner.test("preview limits work while full render preserves pixels") {
     print(String(format: "PERF preview_4k_ms=%.1f full_render_4k_ms=%.1f", previewMilliseconds, fullMilliseconds))
 }
 
+runner.test("custom logos are bounded and keep transparency") {
+    let largeLogo = try makeImage(width: 4_096, height: 2_048) { context in
+        context.clear(CGRect(x: 0, y: 0, width: 4_096, height: 2_048))
+        context.setFillColor(NSColor.systemTeal.withAlphaComponent(0.55).cgColor)
+        context.fillEllipse(in: CGRect(x: 256, y: 256, width: 1_536, height: 1_536))
+    }
+    let normalizedData = try WatermarkRenderer.normalizedLogoPNG(image: largeLogo)
+    guard let normalizedImage = NSImage(data: normalizedData),
+          let representation = NSBitmapImageRep(data: normalizedData) else {
+        throw TestFailure(message: "normalized logo is unreadable")
+    }
+    try expect(
+        WatermarkRenderer.pixelSize(of: normalizedImage) == CGSize(width: 1_024, height: 512),
+        "large logo was not bounded"
+    )
+    try expect(representation.hasAlpha, "logo transparency was removed")
+
+    let smallLogo = try sampleImage(width: 128, height: 64)
+    let smallData = try WatermarkRenderer.normalizedLogoPNG(image: smallLogo)
+    let normalizedSmall = NSImage(data: smallData)!
+    try expect(
+        WatermarkRenderer.pixelSize(of: normalizedSmall) == CGSize(width: 128, height: 64),
+        "small logo should keep its pixels"
+    )
+}
+
+runner.test("portrait and small images preserve dimensions") {
+    for size in [CGSize(width: 300, height: 900), CGSize(width: 64, height: 64)] {
+        let source = try sampleImage(width: Int(size.width), height: Int(size.height))
+        let output = try WatermarkRenderer.render(source: source, template: DefaultTemplates.all[2])
+        try expect(WatermarkRenderer.pixelSize(of: output) == size, "non-landscape dimensions changed")
+    }
+}
+
 runner.test("text and custom logo render to PNG and JPEG") {
     let source = try sampleImage(width: 640, height: 360)
     var textTemplate = DefaultTemplates.all[0]
