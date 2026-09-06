@@ -22,6 +22,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         return true
     }
 
+    func applicationWillTerminate(_ notification: Notification) {
+        viewModel.flushPersistence()
+    }
+
     @objc func showEditor() {
         if windowController == nil {
             let window = NSWindow(

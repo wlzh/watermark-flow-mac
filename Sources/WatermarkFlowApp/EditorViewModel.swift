@@ -11,7 +11,10 @@ final class EditorViewModel: ObservableObject {
     @Published private(set) var templates: [WatermarkTemplate]
     @Published var selectedTemplateID: UUID
     @Published var workingTemplate: WatermarkTemplate {
-        didSet { refreshPreview() }
+        didSet {
+            refreshPreview()
+            scheduleAutomaticPersistence()
+        }
     }
     @Published var statusMessage = "复制图片后载入，或把图片拖到左侧"
 
@@ -19,6 +22,8 @@ final class EditorViewModel: ObservableObject {
     private let defaults: UserDefaults
     private let defaultTemplateKey = "defaultTemplateID"
     private var dragStartPosition: NormalizedPoint?
+    private var persistenceTask: Task<Void, Never>?
+    private var persistenceEnabled = false
 
     init(
         repository: TemplateRepository = TemplateRepository(),
@@ -27,14 +32,17 @@ final class EditorViewModel: ObservableObject {
         self.repository = repository
         self.defaults = defaults
 
-        let users = (try? repository.loadUserTemplates()) ?? []
-        let loadedTemplates = DefaultTemplates.all + users
+        let library = (try? repository.loadLibrary())
+            ?? TemplateLibraryState(templates: DefaultTemplates.all)
+        let loadedTemplates = library.templates
         templates = loadedTemplates
 
-        let savedID = defaults.string(forKey: defaultTemplateKey).flatMap(UUID.init(uuidString:))
+        let savedID = library.lastSelectedTemplateID
+            ?? defaults.string(forKey: defaultTemplateKey).flatMap(UUID.init(uuidString:))
         let initial = loadedTemplates.first { $0.id == savedID } ?? DefaultTemplates.all[0]
         selectedTemplateID = initial.id
         workingTemplate = initial
+        persistenceEnabled = true
     }
 
     var canDeleteSelectedTemplate: Bool {
@@ -53,9 +61,14 @@ final class EditorViewModel: ObservableObject {
     }
 
     func selectTemplate(id: UUID) {
+        guard templates.contains(where: { $0.id == id }) else { return }
+        flushPersistence()
         guard let template = templates.first(where: { $0.id == id }) else { return }
+        persistenceEnabled = false
         selectedTemplateID = id
         workingTemplate = template
+        persistenceEnabled = true
+        persistLibrary()
         statusMessage = "已载入模板：\(template.name)"
     }
 
@@ -77,6 +90,7 @@ final class EditorViewModel: ObservableObject {
 
     func endWatermarkDrag() {
         dragStartPosition = nil
+        flushPersistence(showStatus: true)
     }
 
     func loadFromClipboard() {
@@ -169,6 +183,7 @@ final class EditorViewModel: ObservableObject {
     }
 
     func saveCurrentAsTemplate() {
+        flushPersistence()
         let alert = NSAlert()
         alert.messageText = "保存水印模板"
         alert.informativeText = "输入模板名称。当前图片不会保存到模板中。"
@@ -189,13 +204,16 @@ final class EditorViewModel: ObservableObject {
         template.name = name
         template.isBuiltIn = false
         templates.append(template)
+        persistenceEnabled = false
         selectedTemplateID = template.id
         workingTemplate = template
-        persistUserTemplates()
+        persistenceEnabled = true
+        persistLibrary()
         statusMessage = "已保存模板：\(name)"
     }
 
     func setSelectedAsDefault() {
+        flushPersistence()
         defaults.set(selectedTemplateID.uuidString, forKey: defaultTemplateKey)
         statusMessage = "已设为快捷处理默认模板：\(workingTemplate.name)"
     }
@@ -205,15 +223,27 @@ final class EditorViewModel: ObservableObject {
             statusMessage = "内置模板不可删除，可以另存为自定义模板"
             return
         }
+        let deletingID = selectedTemplateID
+        let wasDefault = defaultTemplateID == deletingID
+        persistenceTask?.cancel()
         templates.removeAll { $0.id == selectedTemplateID }
-        let fallback = DefaultTemplates.all[0]
+        let fallback = templates.first { $0.id == DefaultTemplates.xWLZHID } ?? DefaultTemplates.all[0]
+        persistenceEnabled = false
         selectedTemplateID = fallback.id
         workingTemplate = fallback
-        if defaultTemplateID == selectedTemplateID {
+        persistenceEnabled = true
+        if wasDefault {
             defaults.set(fallback.id.uuidString, forKey: defaultTemplateKey)
         }
-        persistUserTemplates()
+        persistLibrary()
         statusMessage = "已删除用户模板"
+    }
+
+    func flushPersistence(showStatus: Bool = false) {
+        persistenceTask?.cancel()
+        persistenceTask = nil
+        guard persistenceEnabled else { return }
+        persistCurrentTemplate(showStatus: showStatus)
     }
 
     private func loadImage(_ image: NSImage) {
@@ -240,9 +270,41 @@ final class EditorViewModel: ObservableObject {
         throw WatermarkRenderError.outputCreationFailed
     }
 
-    private func persistUserTemplates() {
+    private func scheduleAutomaticPersistence() {
+        guard persistenceEnabled else { return }
+        persistenceTask?.cancel()
+        persistenceTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            guard !Task.isCancelled else { return }
+            self?.persistCurrentTemplate(showStatus: true)
+        }
+    }
+
+    private func persistCurrentTemplate(showStatus: Bool) {
+        guard let index = templates.firstIndex(where: { $0.id == selectedTemplateID }) else { return }
+        var persisted = workingTemplate.clamped()
+        persisted.id = selectedTemplateID
+        persisted.isBuiltIn = templates[index].isBuiltIn
+        templates[index] = persisted
+        workingTemplateWithoutScheduling(persisted)
+        persistLibrary()
+        if showStatus {
+            statusMessage = "模板设置已自动保存"
+        }
+    }
+
+    private func workingTemplateWithoutScheduling(_ template: WatermarkTemplate) {
+        persistenceEnabled = false
+        workingTemplate = template
+        persistenceEnabled = true
+    }
+
+    private func persistLibrary() {
         do {
-            try repository.saveUserTemplates(templates.filter { !$0.isBuiltIn })
+            try repository.saveLibrary(TemplateLibraryState(
+                templates: templates,
+                lastSelectedTemplateID: selectedTemplateID
+            ))
         } catch {
             statusMessage = "保存模板失败：\(error.localizedDescription)"
         }

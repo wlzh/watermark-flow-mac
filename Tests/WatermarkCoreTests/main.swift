@@ -118,6 +118,65 @@ runner.test("user templates persist as JSON") {
     try expect(loaded == [userTemplate.clamped()], "template round-trip mismatch")
 }
 
+runner.test("complete library restores built-in overrides and last selection") {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("WatermarkLibraryTests-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let storageURL = root.appendingPathComponent("templates.json")
+    let repository = TemplateRepository(storageURL: storageURL)
+
+    var builtInOverride = DefaultTemplates.all[0]
+    builtInOverride.text = "@saved"
+    builtInOverride.foregroundColor = RGBAColor(hex: 0x123456, alpha: 0.71)
+    builtInOverride.backgroundColor = RGBAColor(hex: 0x654321, alpha: 0.62)
+    builtInOverride.accentColor = RGBAColor(hex: 0xabcdef, alpha: 0.83)
+    builtInOverride.opacity = 0.74
+    builtInOverride.relativeHeight = 0.143
+    builtInOverride.position = NormalizedPoint(x: 0.27, y: 0.64)
+    builtInOverride.rotationDegrees = -17
+
+    var userTemplate = builtInOverride
+    userTemplate.id = UUID()
+    userTemplate.name = "Saved Custom Logo"
+    userTemplate.brand = .custom
+    userTemplate.customLogoPNG = Data([0, 1, 2, 3, 4, 5])
+    userTemplate.isBuiltIn = false
+
+    try repository.saveLibrary(TemplateLibraryState(
+        templates: [builtInOverride, DefaultTemplates.all[1], DefaultTemplates.all[2], userTemplate],
+        lastSelectedTemplateID: userTemplate.id
+    ))
+    let restored = try repository.loadLibrary()
+
+    try expect(restored.schemaVersion == 1, "schema version mismatch")
+    try expect(restored.templates.count == 4, "template count mismatch")
+    try expect(restored.templates[0] == builtInOverride.clamped(), "built-in override was not restored")
+    try expect(restored.templates[3] == userTemplate.clamped(), "custom logo template was not restored")
+    try expect(restored.lastSelectedTemplateID == userTemplate.id, "last selection was not restored")
+    let json = try String(contentsOf: storageURL, encoding: .utf8)
+    try expect(json.contains("\"schemaVersion\""), "versioned JSON key missing")
+}
+
+runner.test("v0.1.0 template array migrates without data loss") {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("WatermarkMigrationTests-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let storageURL = root.appendingPathComponent("templates.json")
+    var legacy = DefaultTemplates.all[1]
+    legacy.id = UUID()
+    legacy.name = "Legacy User Template"
+    legacy.text = "@legacy"
+    legacy.isBuiltIn = false
+    try JSONEncoder().encode([legacy]).write(to: storageURL, options: .atomic)
+
+    let restored = try TemplateRepository(storageURL: storageURL).loadLibrary()
+    try expect(restored.schemaVersion == 1, "legacy state did not migrate schema")
+    try expect(restored.templates.count == 4, "factory templates were not merged")
+    try expect(restored.templates.prefix(3).map(\.id) == DefaultTemplates.all.map(\.id), "factory order changed")
+    try expect(restored.templates[3] == legacy.clamped(), "legacy user template was lost")
+}
+
 runner.test("all built-in templates preserve source pixels") {
     let source = try sampleImage(width: 1200, height: 800)
     let sourcePNG = try WatermarkRenderer.encode(image: source, format: .png)

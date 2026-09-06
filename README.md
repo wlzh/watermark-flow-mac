@@ -5,7 +5,7 @@ WatermarkFlow 是一个轻量的原生 macOS 菜单栏水印工具。复制图�
 - 作者：X @wlzh
 - 网站：[https://869hr.uk](https://869hr.uk)
 
-## v0.1.0 功能
+## 当前功能
 
 - 从剪贴板、拖放或文件导入图片
 - 文字、X、YouTube 和自定义 Logo 水印
@@ -15,6 +15,7 @@ WatermarkFlow 是一个轻量的原生 macOS 菜单栏水印工具。复制图�
 - 一键生成并复制 PNG，或导出 PNG/JPEG 文件
 - 全局快捷键 `⌥⌘W`：用默认模板处理剪贴板图片并复制
 - 当前会话内保留原图和水印参数，输出为扁平图片
+- 所有模板参数和最后选中的模板自动保存，重启或处理下一张图片时继续沿用
 
 ## 系统要求
 
@@ -41,4 +42,4 @@ WatermarkFlow 是一个轻量的原生 macOS 菜单栏水印工具。复制图�
 4. 点击“生成并复制”，回到聊天或发布应用粘贴。
 5. 高频操作可直接按 `⌥⌘W`，使用默认模板完成处理并替换剪贴板内容。
 
-详细说明见 [安装文档](docs/INSTALL.md)、[PRD](docs/prd/v0.1.0/prd.md) 和 [测试报告](docs/testing/v0.1.0-test-report.md)。
+详细说明见 [安装文档](docs/INSTALL.md)、[PRD](docs/prd/v0.1.1/prd.md) 和 [测试报告](docs/testing/v0.1.1-test-report.md)。
