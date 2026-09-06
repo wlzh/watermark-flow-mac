@@ -5,27 +5,26 @@ import WatermarkCore
 
 struct EditorView: View {
     @ObservedObject var viewModel: EditorViewModel
+    @Environment(\.colorScheme) private var colorScheme
 
-    private let paper = Color(red: 0.95, green: 0.93, blue: 0.87)
-    private let ink = Color(red: 0.08, green: 0.11, blue: 0.12)
-    private let accent = Color(red: 0.05, green: 0.52, blue: 0.48)
+    private var theme: AppTheme { AppTheme(colorScheme: colorScheme) }
 
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider().overlay(ink.opacity(0.2))
+            Divider().overlay(theme.border)
             HSplitView {
                 canvasPanel
                     .frame(minWidth: 560)
                 inspector
                     .frame(minWidth: 300, idealWidth: 320, maxWidth: 350)
             }
-            Divider().overlay(ink.opacity(0.2))
+            Divider().overlay(theme.border)
             footer
         }
         .frame(minWidth: 900, minHeight: 620)
-        .background(paper)
-        .foregroundStyle(ink)
+        .background(theme.background)
+        .foregroundStyle(theme.textPrimary)
     }
 
     private var header: some View {
@@ -36,7 +35,7 @@ struct EditorView: View {
                 Text("图片归你，标记来源")
                     .font(.custom("Avenir Next Medium", size: 11))
                     .tracking(1.2)
-                    .foregroundStyle(ink.opacity(0.58))
+                    .foregroundStyle(theme.textSecondary)
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 3) {
@@ -44,7 +43,7 @@ struct EditorView: View {
                     .font(.custom("Avenir Next Demi Bold", size: 12))
                 Text(viewModel.statusMessage)
                     .font(.system(size: 11))
-                    .foregroundStyle(accent)
+                    .foregroundStyle(theme.accent)
                     .lineLimit(1)
             }
         }
@@ -54,7 +53,7 @@ struct EditorView: View {
 
     private var canvasPanel: some View {
         ZStack {
-            Color(red: 0.075, green: 0.09, blue: 0.1)
+            theme.canvas
             if let image = viewModel.previewImage {
                 GeometryReader { geometry in
                     let rect = aspectFitRect(imageSize: image.size, container: geometry.size)
@@ -85,7 +84,7 @@ struct EditorView: View {
                 VStack(spacing: 14) {
                     Image(systemName: "photo.badge.plus")
                         .font(.system(size: 48, weight: .light))
-                        .foregroundStyle(accent)
+                        .foregroundStyle(theme.accent)
                     Text("拖入一张图片")
                         .font(.custom("Avenir Next Demi Bold", size: 19))
                         .foregroundStyle(.white)
@@ -94,6 +93,14 @@ struct EditorView: View {
                         .foregroundStyle(.white.opacity(0.55))
                 }
             }
+        }
+        .contextMenu {
+            Button(role: .destructive) {
+                viewModel.clearCanvas()
+            } label: {
+                Label("清空图片与水印画布", systemImage: "trash")
+            }
+            .disabled(viewModel.sourceImage == nil)
         }
         .onDrop(of: [UTType.fileURL.identifier, UTType.image.identifier], isTargeted: nil) { providers in
             handleDrop(providers)
@@ -113,6 +120,7 @@ struct EditorView: View {
                     }
                 }
                 .labelsHidden()
+                .controlSize(.large)
 
                 Divider()
                 sectionTitle("内容")
@@ -126,7 +134,7 @@ struct EditorView: View {
 
                 if viewModel.workingTemplate.brand == .custom {
                     Button("选择 Logo 图片…") { viewModel.importCustomLogo() }
-                        .buttonStyle(OutlineButtonStyle(ink: ink))
+                        .buttonStyle(outlineButtonStyle)
                 }
 
                 Divider()
@@ -160,24 +168,40 @@ struct EditorView: View {
 
                 Text("快速位置")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(ink.opacity(0.62))
+                    .foregroundStyle(theme.textSecondary)
                 positionGrid
 
                 Divider()
                 sectionTitle("模板管理")
                 HStack {
                     Button("另存模板") { viewModel.saveCurrentAsTemplate() }
-                        .buttonStyle(OutlineButtonStyle(ink: ink))
+                        .buttonStyle(outlineButtonStyle)
                     Button("设为默认") { viewModel.setSelectedAsDefault() }
-                        .buttonStyle(OutlineButtonStyle(ink: ink))
+                        .buttonStyle(outlineButtonStyle)
                 }
                 Button("删除用户模板") { viewModel.deleteSelectedTemplate() }
-                    .buttonStyle(OutlineButtonStyle(ink: ink))
+                    .buttonStyle(outlineButtonStyle)
                     .disabled(!viewModel.canDeleteSelectedTemplate)
+
+                Divider()
+                sectionTitle("快捷操作")
+                HStack(spacing: 8) {
+                    Text("默认模板快捷键")
+                        .font(.system(size: 11, weight: .medium))
+                    Spacer()
+                    HotKeyRecorderView(
+                        configuration: viewModel.hotKeyConfiguration,
+                        onChange: viewModel.updateHotKey,
+                        onInvalid: viewModel.reportInvalidHotKey
+                    )
+                    .frame(width: 126, height: 28)
+                }
+                Button("恢复默认 ⌥⌘W") { viewModel.resetHotKey() }
+                    .buttonStyle(outlineButtonStyle)
             }
             .padding(20)
         }
-        .background(paper)
+        .background(theme.surface)
     }
 
     private var positionGrid: some View {
@@ -190,7 +214,7 @@ struct EditorView: View {
             ForEach(Array(points.enumerated()), id: \.offset) { _, point in
                 Button(point.0) { viewModel.setPosition(x: point.1, y: point.2) }
                     .frame(maxWidth: .infinity, minHeight: 28)
-                    .buttonStyle(OutlineButtonStyle(ink: ink))
+                    .buttonStyle(outlineButtonStyle)
             }
         }
     }
@@ -198,30 +222,33 @@ struct EditorView: View {
     private var footer: some View {
         HStack(spacing: 10) {
             Button("从剪贴板载入") { viewModel.loadFromClipboard() }
-                .buttonStyle(OutlineButtonStyle(ink: ink))
+                .buttonStyle(outlineButtonStyle)
             Button("打开图片…") { viewModel.openImage() }
-                .buttonStyle(OutlineButtonStyle(ink: ink))
+                .buttonStyle(outlineButtonStyle)
             Button("导出文件…") { viewModel.exportImage() }
-                .buttonStyle(OutlineButtonStyle(ink: ink))
+                .buttonStyle(outlineButtonStyle)
+                .disabled(viewModel.sourceImage == nil)
+            Button("清空画布") { viewModel.clearCanvas() }
+                .buttonStyle(outlineButtonStyle)
                 .disabled(viewModel.sourceImage == nil)
             Spacer()
             Text("拖动可定位 · 模板修改自动保存")
                 .font(.system(size: 11))
-                .foregroundStyle(ink.opacity(0.5))
+                .foregroundStyle(theme.textSecondary)
             Button("生成并复制") { viewModel.generateAndCopy() }
-                .buttonStyle(PrimaryButtonStyle(accent: accent))
+                .buttonStyle(PrimaryButtonStyle(accent: theme.accent, foreground: theme.onAccent))
                 .disabled(viewModel.sourceImage == nil)
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 12)
-        .background(paper)
+        .background(theme.background)
     }
 
     private func sectionTitle(_ title: String) -> some View {
         Text(title.uppercased())
             .font(.custom("Avenir Next Heavy", size: 11))
             .tracking(1.4)
-            .foregroundStyle(ink.opacity(0.68))
+            .foregroundStyle(theme.textSecondary)
     }
 
     private func labeledColorPicker(
@@ -238,7 +265,7 @@ struct EditorView: View {
             .labelsHidden()
             Text(title)
                 .font(.system(size: 10))
-                .foregroundStyle(ink.opacity(0.58))
+                .foregroundStyle(theme.textSecondary)
         }
         .frame(maxWidth: .infinity)
     }
@@ -253,12 +280,20 @@ struct EditorView: View {
             HStack {
                 Text(title)
                 Spacer()
-                Text(label).monospacedDigit().foregroundStyle(ink.opacity(0.55))
+                Text(label).monospacedDigit().foregroundStyle(theme.textSecondary)
             }
             .font(.system(size: 11, weight: .medium))
             Slider(value: value, in: range)
-                .tint(accent)
+                .tint(theme.accent)
         }
+    }
+
+    private var outlineButtonStyle: OutlineButtonStyle {
+        OutlineButtonStyle(
+            foreground: theme.textPrimary,
+            fill: theme.controlFill,
+            border: theme.border
+        )
     }
 
     private func aspectFitRect(imageSize: CGSize, container: CGSize) -> CGRect {
@@ -298,11 +333,12 @@ struct EditorView: View {
 
 private struct PrimaryButtonStyle: ButtonStyle {
     let accent: Color
+    let foreground: Color
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.custom("Avenir Next Demi Bold", size: 13))
-            .foregroundStyle(.white)
+            .foregroundStyle(foreground)
             .padding(.horizontal, 18)
             .frame(minHeight: 34)
             .background(accent.opacity(configuration.isPressed ? 0.75 : 1))
@@ -311,16 +347,18 @@ private struct PrimaryButtonStyle: ButtonStyle {
 }
 
 private struct OutlineButtonStyle: ButtonStyle {
-    let ink: Color
+    let foreground: Color
+    let fill: Color
+    let border: Color
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 12, weight: .medium))
-            .foregroundStyle(ink.opacity(configuration.isPressed ? 0.55 : 0.9))
+            .foregroundStyle(foreground.opacity(configuration.isPressed ? 0.68 : 0.92))
             .padding(.horizontal, 10)
             .frame(minHeight: 30)
-            .background(ink.opacity(configuration.isPressed ? 0.12 : 0.04))
-            .overlay(RoundedRectangle(cornerRadius: 7).stroke(ink.opacity(0.2)))
+            .background(fill.opacity(configuration.isPressed ? 0.7 : 1))
+            .overlay(RoundedRectangle(cornerRadius: 7).stroke(border))
             .clipShape(RoundedRectangle(cornerRadius: 7))
     }
 }

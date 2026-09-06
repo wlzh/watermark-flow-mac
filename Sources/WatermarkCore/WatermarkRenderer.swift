@@ -30,8 +30,42 @@ public enum WatermarkRenderer {
             throw WatermarkRenderError.invalidSourceImage
         }
 
-        let width = sourceCGImage.width
-        let height = sourceCGImage.height
+        return try render(
+            sourceCGImage: sourceCGImage,
+            template: template,
+            outputWidth: sourceCGImage.width,
+            outputHeight: sourceCGImage.height
+        )
+    }
+
+    public static func renderPreview(
+        source: NSImage,
+        template: WatermarkTemplate,
+        maxPixelDimension: Int = 1_200
+    ) throws -> NSImage {
+        guard maxPixelDimension > 0,
+              let sourceCGImage = pixelCGImage(from: source) else {
+            throw WatermarkRenderError.invalidSourceImage
+        }
+
+        let sourceMax = max(sourceCGImage.width, sourceCGImage.height)
+        let scale = min(1, Double(maxPixelDimension) / Double(sourceMax))
+        let width = max(1, Int((Double(sourceCGImage.width) * scale).rounded()))
+        let height = max(1, Int((Double(sourceCGImage.height) * scale).rounded()))
+        return try render(
+            sourceCGImage: sourceCGImage,
+            template: template,
+            outputWidth: width,
+            outputHeight: height
+        )
+    }
+
+    private static func render(
+        sourceCGImage: CGImage,
+        template: WatermarkTemplate,
+        outputWidth width: Int,
+        outputHeight height: Int
+    ) throws -> NSImage {
         let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
         guard let context = CGContext(
             data: nil,

@@ -1,4 +1,5 @@
 import AppKit
+import Carbon
 import Foundation
 import WatermarkCore
 
@@ -47,6 +48,61 @@ enum SelfTest {
             throw Failure("automatic editor persistence failed")
         }
 
+        let sourceData = try WatermarkRenderer.encode(image: source, format: .png)
+        restoredEditor.loadImageData(sourceData)
+        guard restoredEditor.sourceImage != nil, restoredEditor.previewImage != nil else {
+            throw Failure("editor image load failed")
+        }
+        let quickOutput = try restoredEditor.renderForQuickApply(
+            source: source,
+            templateID: DefaultTemplates.youtubeDuanKuID
+        )
+        guard WatermarkRenderer.pixelSize(of: quickOutput) == CGSize(width: 960, height: 540) else {
+            throw Failure("template-specific quick render failed")
+        }
+        restoredEditor.clearCanvas()
+        guard restoredEditor.sourceImage == nil,
+              restoredEditor.previewImage == nil,
+              restoredEditor.templates.count == 4 else {
+            throw Failure("clear canvas removed saved templates or retained image state")
+        }
+        let customHotKey = HotKeyConfiguration(
+            keyCode: UInt32(kVK_ANSI_K),
+            modifiers: UInt32(cmdKey | shiftKey),
+            keyLabel: "K"
+        )
+        restoredEditor.hotKeyRegistrationHandler = { _ in true }
+        restoredEditor.updateHotKey(customHotKey)
+        let hotKeyRestoredEditor = EditorViewModel(repository: repository, defaults: isolatedDefaults)
+        guard hotKeyRestoredEditor.hotKeyConfiguration == customHotKey,
+              hotKeyRestoredEditor.hotKeyConfiguration.displayName == "⇧⌘K" else {
+            throw Failure("custom hotkey persistence failed")
+        }
+        var recordedHotKey: HotKeyConfiguration?
+        let recorderCoordinator = HotKeyRecorderView.Coordinator(
+            onChange: { recordedHotKey = $0 },
+            onInvalid: {}
+        )
+        let recorderButton = RecorderButton()
+        recorderButton.target = recorderCoordinator
+        recorderCoordinator.beginRecording(recorderButton)
+        guard let keyEvent = NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [.command, .shift],
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            characters: "k",
+            charactersIgnoringModifiers: "k",
+            isARepeat: false,
+            keyCode: UInt16(kVK_ANSI_K)
+        ) else { throw Failure("unable to create hotkey event") }
+        recorderButton.keyDown(with: keyEvent)
+        guard recordedHotKey == customHotKey, !recorderButton.isRecording else {
+            throw Failure("hotkey recorder control failed")
+        }
+
         let output = try WatermarkRenderer.render(source: source, template: DefaultTemplates.all[0])
         let pasteboard = NSPasteboard(name: NSPasteboard.Name("WatermarkFlow.SelfTest.\(UUID().uuidString)"))
         defer { pasteboard.releaseGlobally() }
@@ -62,6 +118,11 @@ enum SelfTest {
         print("SELF_TEST_RENDER=PASS 960x540")
         print("SELF_TEST_PERSISTENCE=PASS")
         print("SELF_TEST_AUTOSAVE_RESTART=PASS")
+        print("SELF_TEST_POSITION_RESTORE=PASS value=0.31,0.42")
+        print("SELF_TEST_TEMPLATE_QUICK_RENDER=PASS")
+        print("SELF_TEST_CLEAR_CANVAS=PASS templatesPreserved=4")
+        print("SELF_TEST_CUSTOM_HOTKEY=PASS value=\(customHotKey.displayName)")
+        print("SELF_TEST_HOTKEY_RECORDER=PASS")
         print("SELF_TEST_PASTEBOARD_SERVER=PASS changeCount=\(changeCount)")
     }
 

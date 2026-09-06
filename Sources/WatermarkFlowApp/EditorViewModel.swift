@@ -17,6 +17,7 @@ final class EditorViewModel: ObservableObject {
         }
     }
     @Published var statusMessage = "复制图片后载入，或把图片拖到左侧"
+    @Published private(set) var hotKeyConfiguration: HotKeyConfiguration
 
     private let repository: TemplateRepository
     private let defaults: UserDefaults
@@ -24,6 +25,7 @@ final class EditorViewModel: ObservableObject {
     private var dragStartPosition: NormalizedPoint?
     private var persistenceTask: Task<Void, Never>?
     private var persistenceEnabled = false
+    var hotKeyRegistrationHandler: ((HotKeyConfiguration) -> Bool)?
 
     init(
         repository: TemplateRepository = TemplateRepository(),
@@ -31,6 +33,7 @@ final class EditorViewModel: ObservableObject {
     ) {
         self.repository = repository
         self.defaults = defaults
+        hotKeyConfiguration = HotKeyConfiguration.load(from: defaults)
 
         let library = (try? repository.loadLibrary())
             ?? TemplateLibraryState(templates: DefaultTemplates.all)
@@ -146,7 +149,7 @@ final class EditorViewModel: ObservableObject {
 
     func generateAndCopy() {
         do {
-            let output = try requireRenderedImage()
+            let output = try renderFullResolution()
             try ClipboardService.writeImage(output)
             statusMessage = "已生成并复制，可直接粘贴 · \(sourcePixelDescription)"
             NSSound(named: "Tink")?.play()
@@ -156,17 +159,29 @@ final class EditorViewModel: ObservableObject {
     }
 
     func quickApplyDefaultToClipboard() throws -> NSImage {
+        try quickApplyTemplateToClipboard(id: defaultTemplateID)
+    }
+
+    func quickApplyTemplateToClipboard(id: UUID) throws -> NSImage {
+        flushPersistence()
         let source = try ClipboardService.readImage()
-        let template = templates.first { $0.id == defaultTemplateID } ?? DefaultTemplates.all[0]
-        let output = try WatermarkRenderer.render(source: source, template: template)
+        let output = try renderForQuickApply(source: source, templateID: id)
         try ClipboardService.writeImage(output)
-        statusMessage = "已用“\(template.name)”快速生成并复制"
+        let templateName = templates.first(where: { $0.id == id })?.name ?? "所选模板"
+        statusMessage = "已用“\(templateName)”快速生成并复制"
         return output
+    }
+
+    func renderForQuickApply(source: NSImage, templateID: UUID) throws -> NSImage {
+        guard let template = templates.first(where: { $0.id == templateID }) else {
+            throw QuickApplyError.templateNotFound
+        }
+        return try WatermarkRenderer.render(source: source, template: template)
     }
 
     func exportImage() {
         do {
-            let output = try requireRenderedImage()
+            let output = try renderFullResolution()
             let panel = NSSavePanel()
             panel.allowedContentTypes = [.png, .jpeg]
             panel.nameFieldStringValue = "watermarked.png"
@@ -239,6 +254,45 @@ final class EditorViewModel: ObservableObject {
         statusMessage = "已删除用户模板"
     }
 
+    func clearCanvas() {
+        sourceImage = nil
+        previewImage = nil
+        dragStartPosition = nil
+        statusMessage = "已清空当前图片与水印画布，模板设置已保留"
+    }
+
+    func updateHotKey(_ configuration: HotKeyConfiguration) {
+        guard configuration.hasRequiredModifier else {
+            statusMessage = "快捷键必须包含 ⌘、⌥ 或 ⌃"
+            return
+        }
+        guard hotKeyRegistrationHandler?(configuration) == true else {
+            statusMessage = "快捷键 \(configuration.displayName) 注册失败，原快捷键继续有效"
+            return
+        }
+        hotKeyConfiguration = configuration
+        configuration.save(to: defaults)
+        statusMessage = "全局快捷键已更新为 \(configuration.displayName)"
+    }
+
+    func resetHotKey() {
+        updateHotKey(.default)
+    }
+
+    func reportInvalidHotKey() {
+        statusMessage = "快捷键必须包含 ⌘、⌥ 或 ⌃，按 Esc 可取消录制"
+    }
+
+    func adoptStartupHotKeyFallback(_ configuration: HotKeyConfiguration) {
+        hotKeyConfiguration = configuration
+        configuration.save(to: defaults)
+        statusMessage = "已保存的快捷键发生冲突，已恢复为 \(configuration.displayName)"
+    }
+
+    func reportStartupHotKeyFailure() {
+        statusMessage = "全局快捷键注册失败，请在右侧重新设置；菜单栏功能仍可使用"
+    }
+
     func flushPersistence(showStatus: Bool = false) {
         persistenceTask?.cancel()
         persistenceTask = nil
@@ -257,17 +311,19 @@ final class EditorViewModel: ObservableObject {
             return
         }
         do {
-            previewImage = try WatermarkRenderer.render(source: sourceImage, template: workingTemplate)
+            previewImage = try WatermarkRenderer.renderPreview(
+                source: sourceImage,
+                template: workingTemplate
+            )
         } catch {
             previewImage = nil
             statusMessage = error.localizedDescription
         }
     }
 
-    private func requireRenderedImage() throws -> NSImage {
-        guard sourceImage != nil else { throw ClipboardError.noImage }
-        if let previewImage { return previewImage }
-        throw WatermarkRenderError.outputCreationFailed
+    private func renderFullResolution() throws -> NSImage {
+        guard let sourceImage else { throw ClipboardError.noImage }
+        return try WatermarkRenderer.render(source: sourceImage, template: workingTemplate)
     }
 
     private func scheduleAutomaticPersistence() {
@@ -309,4 +365,10 @@ final class EditorViewModel: ObservableObject {
             statusMessage = "保存模板失败：\(error.localizedDescription)"
         }
     }
+}
+
+private enum QuickApplyError: LocalizedError {
+    case templateNotFound
+
+    var errorDescription: String? { "所选水印模板已不存在，请重新选择" }
 }
