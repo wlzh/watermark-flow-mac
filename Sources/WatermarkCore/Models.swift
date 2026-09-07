@@ -77,7 +77,7 @@ public enum WatermarkBrand: String, Codable, CaseIterable, Sendable {
         case .x: return "X"
         case .youtube: return "YouTube"
         case .text: return "纯文字"
-        case .custom: return "自定义 Logo"
+        case .custom: return "自定义 Logo + 文字"
         }
     }
 }

@@ -8,6 +8,7 @@ struct AppTheme {
     let textSecondary: Color
     let border: Color
     let accent: Color
+    let warning: Color
     let onAccent: Color
     let canvas: Color
 
@@ -20,6 +21,7 @@ struct AppTheme {
             textSecondary = Color(hex: 0xA6AAA4)
             border = Color(hex: 0x394041)
             accent = Color(hex: 0x48B9AA)
+            warning = Color(hex: 0xD6A45B)
             onAccent = Color(hex: 0x0B1514)
             canvas = Color(hex: 0x0B0F10)
         } else {
@@ -30,6 +32,7 @@ struct AppTheme {
             textSecondary = Color(hex: 0x5C6463)
             border = Color(hex: 0xD4CCBE)
             accent = Color(hex: 0x0D887C)
+            warning = Color(hex: 0x9A5A08)
             onAccent = Color.white
             canvas = Color(hex: 0x111617)
         }
