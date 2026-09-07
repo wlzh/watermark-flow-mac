@@ -39,8 +39,15 @@ enum SelfTest {
         editor.workingTemplate.text = "@automatic"
         editor.workingTemplate.position = NormalizedPoint(x: 0.31, y: 0.42)
         editor.workingTemplate.backgroundColor = RGBAColor(hex: 0x245f73, alpha: 0.67)
+        editor.workingTemplate.opacity = 0.79
+        editor.workingTemplate.relativeHeight = 0.12
+        editor.workingTemplate.rotationDegrees = -16
         editor.workingTemplate.layoutMode = .tiled
         editor.workingTemplate.tileDensity = 8
+        editor.workingTemplate.activeBackgroundColor = RGBAColor(hex: 0x7a3b21, alpha: 0.38)
+        editor.workingTemplate.activeOpacity = 0.46
+        editor.workingTemplate.activeRelativeHeight = 0.068
+        editor.workingTemplate.activeRotationDegrees = 29
         RunLoop.current.run(until: Date().addingTimeInterval(0.4))
         let restoredEditor = EditorViewModel(repository: repository, defaults: isolatedDefaults)
         guard restoredEditor.workingTemplate.text == "@automatic",
@@ -48,8 +55,28 @@ enum SelfTest {
               restoredEditor.workingTemplate.backgroundColor == RGBAColor(hex: 0x245f73, alpha: 0.67),
               restoredEditor.workingTemplate.layoutMode == .tiled,
               restoredEditor.workingTemplate.tileDensity == 8,
+              restoredEditor.workingTemplate.activeBackgroundColor == RGBAColor(hex: 0x7a3b21, alpha: 0.38),
+              restoredEditor.workingTemplate.activeOpacity == 0.46,
+              restoredEditor.workingTemplate.activeRelativeHeight == 0.068,
+              restoredEditor.workingTemplate.activeRotationDegrees == 29,
               restoredEditor.selectedTemplateID == editor.selectedTemplateID else {
             throw Failure("automatic editor persistence failed")
+        }
+        restoredEditor.workingTemplate.layoutMode = .single
+        guard restoredEditor.workingTemplate.activeBackgroundColor == RGBAColor(hex: 0x245f73, alpha: 0.67),
+              restoredEditor.workingTemplate.activeOpacity == 0.79,
+              restoredEditor.workingTemplate.activeRelativeHeight == 0.12,
+              restoredEditor.workingTemplate.activeRotationDegrees == -16,
+              restoredEditor.workingTemplate.position == NormalizedPoint(x: 0.31, y: 0.42) else {
+            throw Failure("single visual profile was not restored")
+        }
+        restoredEditor.workingTemplate.layoutMode = .tiled
+        guard restoredEditor.workingTemplate.activeBackgroundColor == RGBAColor(hex: 0x7a3b21, alpha: 0.38),
+              restoredEditor.workingTemplate.activeOpacity == 0.46,
+              restoredEditor.workingTemplate.activeRelativeHeight == 0.068,
+              restoredEditor.workingTemplate.activeRotationDegrees == 29,
+              restoredEditor.workingTemplate.tileDensity == 8 else {
+            throw Failure("tiled visual profile was not restored")
         }
 
         let sourceData = try WatermarkRenderer.encode(image: source, format: .png)
@@ -208,6 +235,7 @@ enum SelfTest {
         print("SELF_TEST_AUTOSAVE_RESTART=PASS")
         print("SELF_TEST_POSITION_RESTORE=PASS value=0.31,0.42")
         print("SELF_TEST_TILED_LAYOUT=PASS density=8")
+        print("SELF_TEST_DUAL_LAYOUT_SETTINGS=PASS")
         print("SELF_TEST_TEMPLATE_QUICK_RENDER=PASS")
         print("SELF_TEST_REMOVE_RESTORE_WATERMARK=PASS")
         print("SELF_TEST_TEMPLATE_REPLACEMENT=PASS")

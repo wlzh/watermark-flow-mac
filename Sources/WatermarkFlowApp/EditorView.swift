@@ -237,14 +237,6 @@ struct EditorView: View {
                 }
 
                 Divider()
-                sectionTitle("颜色")
-                HStack {
-                    labeledColorPicker("文字", keyPath: \.foregroundColor)
-                    labeledColorPicker("背景", keyPath: \.backgroundColor)
-                    labeledColorPicker("图标", keyPath: \.accentColor)
-                }
-
-                Divider()
                 sectionTitle("排版")
                 Picker("布局", selection: $viewModel.workingTemplate.layoutMode) {
                     ForEach(WatermarkLayoutMode.allCases, id: \.self) { mode in
@@ -261,27 +253,39 @@ struct EditorView: View {
                         step: 1,
                         label: "\(Int(viewModel.workingTemplate.tileDensity.rounded())) 级"
                     )
-                    Text("满屏会重复当前水印；位置在切回单个模式后继续保留")
+                    Text("满屏参数独立保存；切回单个会恢复单个模式设置")
+                        .font(.system(size: 10))
+                        .foregroundStyle(theme.textSecondary)
+                } else {
+                    Text("单个参数独立保存；切到满屏会恢复满屏模式设置")
                         .font(.system(size: 10))
                         .foregroundStyle(theme.textSecondary)
                 }
+
+                Divider()
+                sectionTitle("\(viewModel.workingTemplate.layoutMode.displayName)样式")
+                HStack {
+                    labeledColorPicker("文字", keyPath: \.activeForegroundColor)
+                    labeledColorPicker("背景", keyPath: \.activeBackgroundColor)
+                    labeledColorPicker("图标", keyPath: \.activeAccentColor)
+                }
                 valueSlider(
                     title: "透明度",
-                    value: $viewModel.workingTemplate.opacity,
+                    value: $viewModel.workingTemplate.activeOpacity,
                     range: 0.05...1,
-                    label: "\(Int(viewModel.workingTemplate.opacity * 100))%"
+                    label: "\(Int(viewModel.workingTemplate.activeOpacity * 100))%"
                 )
                 valueSlider(
                     title: "大小",
-                    value: $viewModel.workingTemplate.relativeHeight,
+                    value: $viewModel.workingTemplate.activeRelativeHeight,
                     range: 0.035...0.3,
-                    label: "\(Int(viewModel.workingTemplate.relativeHeight * 1000) / 10)%"
+                    label: "\(Int(viewModel.workingTemplate.activeRelativeHeight * 1000) / 10)%"
                 )
                 valueSlider(
                     title: "旋转",
-                    value: $viewModel.workingTemplate.rotationDegrees,
+                    value: $viewModel.workingTemplate.activeRotationDegrees,
                     range: -180...180,
-                    label: "\(Int(viewModel.workingTemplate.rotationDegrees))°"
+                    label: "\(Int(viewModel.workingTemplate.activeRotationDegrees))°"
                 )
 
                 if viewModel.workingTemplate.layoutMode == .single {

@@ -113,6 +113,16 @@ runner.test("built-in templates are stable") {
     try expect(DefaultTemplates.all.map(\.text) == ["@wlzh", "@gxjdian", "短裤AI分享"], "template text mismatch")
     try expect(DefaultTemplates.all.allSatisfy { $0.layoutMode == .single }, "factory templates should default to single layout")
     try expect(DefaultTemplates.all.allSatisfy { $0.tileDensity == 5 }, "factory tile density changed")
+    try expect(DefaultTemplates.all.allSatisfy {
+        $0.tiledStyle == WatermarkVisualSettings(
+            foregroundColor: $0.foregroundColor,
+            backgroundColor: $0.backgroundColor,
+            accentColor: $0.accentColor,
+            opacity: $0.opacity,
+            relativeHeight: $0.relativeHeight,
+            rotationDegrees: $0.rotationDegrees
+        )
+    }, "factory tiled style should initially match single style")
     try expect(DefaultTemplates.all.allSatisfy(\.isBuiltIn), "template must be built in")
 }
 
@@ -123,12 +133,60 @@ runner.test("template values clamp to rendering bounds") {
     template.position = NormalizedPoint(x: -1, y: 3)
     template.rotationDegrees = 400
     template.tileDensity = 99
+    template.tiledStyle.opacity = -4
+    template.tiledStyle.relativeHeight = 2
+    template.tiledStyle.rotationDegrees = -400
     let clamped = template.clamped()
     try expect(clamped.opacity == 1, "opacity did not clamp")
     try expect(clamped.relativeHeight == 0.035, "height did not clamp")
     try expect(clamped.position == NormalizedPoint(x: 0, y: 1), "position did not clamp")
     try expect(clamped.rotationDegrees == 180, "rotation did not clamp")
     try expect(clamped.tileDensity == 10, "tile density did not clamp")
+    try expect(clamped.tiledStyle.opacity == 0.05, "tiled opacity did not clamp")
+    try expect(clamped.tiledStyle.relativeHeight == 0.3, "tiled height did not clamp")
+    try expect(clamped.tiledStyle.rotationDegrees == -180, "tiled rotation did not clamp")
+}
+
+runner.test("single and tiled visual settings remain independent") {
+    var template = DefaultTemplates.all[0]
+    template.foregroundColor = RGBAColor(hex: 0x112233)
+    template.backgroundColor = RGBAColor(hex: 0x445566, alpha: 0.7)
+    template.accentColor = RGBAColor(hex: 0x778899)
+    template.opacity = 0.82
+    template.relativeHeight = 0.11
+    template.rotationDegrees = -12
+    template.position = NormalizedPoint(x: 0.18, y: 0.83)
+
+    template.layoutMode = .tiled
+    template.activeForegroundColor = RGBAColor(hex: 0xf1e2d3)
+    template.activeBackgroundColor = RGBAColor(hex: 0xa4b5c6, alpha: 0.35)
+    template.activeAccentColor = RGBAColor(hex: 0xd7e8f9)
+    template.activeOpacity = 0.43
+    template.activeRelativeHeight = 0.065
+    template.activeRotationDegrees = 31
+    template.tileDensity = 9
+
+    try expect(template.activeOpacity == 0.43, "tiled opacity was not active")
+    try expect(template.activeRelativeHeight == 0.065, "tiled size was not active")
+    try expect(template.activeRotationDegrees == 31, "tiled rotation was not active")
+
+    template.layoutMode = .single
+    try expect(template.activeForegroundColor == RGBAColor(hex: 0x112233), "single foreground was overwritten")
+    try expect(template.activeBackgroundColor == RGBAColor(hex: 0x445566, alpha: 0.7), "single background was overwritten")
+    try expect(template.activeAccentColor == RGBAColor(hex: 0x778899), "single accent was overwritten")
+    try expect(template.activeOpacity == 0.82, "single opacity was overwritten")
+    try expect(template.activeRelativeHeight == 0.11, "single size was overwritten")
+    try expect(template.activeRotationDegrees == -12, "single rotation was overwritten")
+    try expect(template.position == NormalizedPoint(x: 0.18, y: 0.83), "single position was overwritten")
+
+    template.layoutMode = .tiled
+    try expect(template.activeForegroundColor == RGBAColor(hex: 0xf1e2d3), "tiled foreground was not restored")
+    try expect(template.activeBackgroundColor == RGBAColor(hex: 0xa4b5c6, alpha: 0.35), "tiled background was not restored")
+    try expect(template.activeAccentColor == RGBAColor(hex: 0xd7e8f9), "tiled accent was not restored")
+    try expect(template.activeOpacity == 0.43, "tiled opacity was not restored")
+    try expect(template.activeRelativeHeight == 0.065, "tiled size was not restored")
+    try expect(template.activeRotationDegrees == 31, "tiled rotation was not restored")
+    try expect(template.tileDensity == 9, "tiled density was not restored")
 }
 
 runner.test("drag delta keeps clicks stable and moves relatively") {
@@ -176,6 +234,12 @@ runner.test("complete library restores built-in overrides and last selection") {
     builtInOverride.rotationDegrees = -17
     builtInOverride.layoutMode = .tiled
     builtInOverride.tileDensity = 9
+    builtInOverride.activeForegroundColor = RGBAColor(hex: 0xfedcba, alpha: 0.66)
+    builtInOverride.activeBackgroundColor = RGBAColor(hex: 0x102030, alpha: 0.44)
+    builtInOverride.activeAccentColor = RGBAColor(hex: 0x405060)
+    builtInOverride.activeOpacity = 0.48
+    builtInOverride.activeRelativeHeight = 0.071
+    builtInOverride.activeRotationDegrees = 28
 
     var userTemplate = builtInOverride
     userTemplate.id = UUID()
@@ -190,7 +254,7 @@ runner.test("complete library restores built-in overrides and last selection") {
     ))
     let restored = try repository.loadLibrary()
 
-    try expect(restored.schemaVersion == 2, "schema version mismatch")
+    try expect(restored.schemaVersion == 3, "schema version mismatch")
     try expect(restored.templates.count == 4, "template count mismatch")
     try expect(restored.templates[0] == builtInOverride.clamped(), "built-in override was not restored")
     try expect(restored.templates[3] == userTemplate.clamped(), "custom logo template was not restored")
@@ -213,10 +277,13 @@ runner.test("v0.1.0 template array migrates without data loss") {
     try JSONEncoder().encode([legacy]).write(to: storageURL, options: .atomic)
 
     let restored = try TemplateRepository(storageURL: storageURL).loadLibrary()
-    try expect(restored.schemaVersion == 2, "legacy state did not migrate schema")
+    try expect(restored.schemaVersion == 3, "legacy state did not migrate schema")
     try expect(restored.templates.count == 4, "factory templates were not merged")
     try expect(restored.templates.prefix(3).map(\.id) == DefaultTemplates.all.map(\.id), "factory order changed")
     try expect(restored.templates[3] == legacy.clamped(), "legacy user template was lost")
+    let migratedJSON = try String(contentsOf: storageURL, encoding: .utf8)
+    try expect(migratedJSON.contains("\"schemaVersion\" : 3"), "legacy array migration was not written to disk")
+    try expect(migratedJSON.contains("\"tiledStyle\""), "legacy array is missing persisted tiled profile")
 }
 
 runner.test("v0.2.3 templates migrate to single layout defaults") {
@@ -237,14 +304,95 @@ runner.test("v0.2.3 templates migrate to single layout defaults") {
     for index in templates.indices {
         templates[index].removeValue(forKey: "layoutMode")
         templates[index].removeValue(forKey: "tileDensity")
+        templates[index].removeValue(forKey: "tiledStyle")
     }
     json["templates"] = templates
     try JSONSerialization.data(withJSONObject: json).write(to: storageURL, options: .atomic)
 
     let restored = try TemplateRepository(storageURL: storageURL).loadLibrary()
-    try expect(restored.schemaVersion == 2, "layout migration did not advance schema")
+    try expect(restored.schemaVersion == 3, "layout migration did not advance schema")
     try expect(restored.templates.allSatisfy { $0.layoutMode == .single }, "legacy layout did not default to single")
     try expect(restored.templates.allSatisfy { $0.tileDensity == 5 }, "legacy density did not default to five")
+    try expect(restored.templates.allSatisfy {
+        $0.tiledStyle.foregroundColor == $0.foregroundColor
+            && $0.tiledStyle.backgroundColor == $0.backgroundColor
+            && $0.tiledStyle.accentColor == $0.accentColor
+            && $0.tiledStyle.opacity == $0.opacity
+            && $0.tiledStyle.relativeHeight == $0.relativeHeight
+            && $0.tiledStyle.rotationDegrees == $0.rotationDegrees
+    }, "legacy visual settings were not copied into tiled style")
+    let migratedJSON = try String(contentsOf: storageURL, encoding: .utf8)
+    try expect(migratedJSON.contains("\"schemaVersion\" : 3"), "schema 1 migration was not written to disk")
+    try expect(migratedJSON.contains("\"tiledStyle\""), "schema 1 migration is missing persisted tiled profile")
+}
+
+runner.test("v0.3.0 shared visual settings migrate into tiled profile") {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("WatermarkDualStyleMigrationTests-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let storageURL = root.appendingPathComponent("templates.json")
+    var legacy = DefaultTemplates.all[0]
+    legacy.layoutMode = .tiled
+    legacy.tileDensity = 8
+    legacy.foregroundColor = RGBAColor(hex: 0x102938)
+    legacy.backgroundColor = RGBAColor(hex: 0x475665, alpha: 0.52)
+    legacy.accentColor = RGBAColor(hex: 0xaabbcc)
+    legacy.opacity = 0.63
+    legacy.relativeHeight = 0.081
+    legacy.rotationDegrees = 24
+    let encoded = try JSONEncoder().encode(TemplateLibraryState(
+        schemaVersion: 2,
+        templates: [legacy, DefaultTemplates.all[1], DefaultTemplates.all[2]],
+        lastSelectedTemplateID: legacy.id
+    ))
+    guard var json = try JSONSerialization.jsonObject(with: encoded) as? [String: Any],
+          var templates = json["templates"] as? [[String: Any]] else {
+        throw TestFailure(message: "unable to create v0.3.0 template fixture")
+    }
+    for index in templates.indices {
+        templates[index].removeValue(forKey: "tiledStyle")
+    }
+    json["templates"] = templates
+    try JSONSerialization.data(withJSONObject: json).write(to: storageURL, options: .atomic)
+
+    let restored = try TemplateRepository(storageURL: storageURL).loadLibrary()
+    let migrated = restored.templates[0]
+    try expect(restored.schemaVersion == 3, "dual-style migration did not advance schema")
+    try expect(migrated.layoutMode == .tiled, "v0.3.0 layout mode changed during migration")
+    try expect(migrated.tileDensity == 8, "v0.3.0 density changed during migration")
+    try expect(migrated.tiledStyle.foregroundColor == legacy.foregroundColor, "foreground was not migrated")
+    try expect(migrated.tiledStyle.backgroundColor == legacy.backgroundColor, "background was not migrated")
+    try expect(migrated.tiledStyle.accentColor == legacy.accentColor, "accent was not migrated")
+    try expect(migrated.tiledStyle.opacity == legacy.opacity, "opacity was not migrated")
+    try expect(migrated.tiledStyle.relativeHeight == legacy.relativeHeight, "size was not migrated")
+    try expect(migrated.tiledStyle.rotationDegrees == legacy.rotationDegrees, "rotation was not migrated")
+    let migratedJSON = try String(contentsOf: storageURL, encoding: .utf8)
+    try expect(migratedJSON.contains("\"schemaVersion\" : 3"), "schema 2 migration was not written to disk")
+    try expect(migratedJSON.contains("\"tiledStyle\""), "schema 2 migration is missing persisted tiled profile")
+}
+
+runner.test("future template schema fails closed without rewriting data") {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("WatermarkFutureSchemaTests-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let storageURL = root.appendingPathComponent("templates.json")
+    let encoded = try JSONEncoder().encode(TemplateLibraryState(
+        schemaVersion: 999,
+        templates: DefaultTemplates.all,
+        lastSelectedTemplateID: DefaultTemplates.xWLZHID
+    ))
+    try encoded.write(to: storageURL, options: .atomic)
+    let before = try Data(contentsOf: storageURL)
+    do {
+        _ = try TemplateRepository(storageURL: storageURL).loadLibrary()
+        throw TestFailure(message: "future schema should be rejected")
+    } catch TemplateRepositoryError.unsupportedStorageFormat {
+        // Expected: never downgrade data created by a newer application.
+    }
+    let after = try Data(contentsOf: storageURL)
+    try expect(after == before, "future schema data was rewritten")
 }
 
 runner.test("all built-in templates preserve source pixels") {
@@ -257,6 +405,55 @@ runner.test("all built-in templates preserve source pixels") {
         try expect(outputPNG.count > 1_000, "PNG is unexpectedly small")
         try expect(outputPNG != sourcePNG, "watermark did not change output")
     }
+}
+
+runner.test("renderer uses only the active layout visual profile") {
+    let source = try sampleImage(width: 960, height: 540)
+    var tiled = DefaultTemplates.all[0]
+    tiled.layoutMode = .tiled
+    tiled.activeForegroundColor = RGBAColor(hex: 0xfefefe)
+    tiled.activeBackgroundColor = RGBAColor(hex: 0x101010, alpha: 0.5)
+    tiled.activeAccentColor = RGBAColor(hex: 0xffaa00)
+    tiled.activeOpacity = 0.55
+    tiled.activeRelativeHeight = 0.07
+    tiled.activeRotationDegrees = 27
+    let tiledBaseline = try WatermarkRenderer.encode(
+        image: WatermarkRenderer.render(source: source, template: tiled),
+        format: .png
+    )
+
+    tiled.foregroundColor = RGBAColor(hex: 0x00ff00)
+    tiled.backgroundColor = RGBAColor(hex: 0xff0000)
+    tiled.accentColor = RGBAColor(hex: 0x0000ff)
+    tiled.opacity = 1
+    tiled.relativeHeight = 0.3
+    tiled.rotationDegrees = -90
+    let tiledAfterSingleEdit = try WatermarkRenderer.encode(
+        image: WatermarkRenderer.render(source: source, template: tiled),
+        format: .png
+    )
+    try expect(tiledAfterSingleEdit == tiledBaseline, "single profile leaked into tiled rendering")
+
+    tiled.activeOpacity = 0.95
+    let tiledAfterActiveEdit = try WatermarkRenderer.encode(
+        image: WatermarkRenderer.render(source: source, template: tiled),
+        format: .png
+    )
+    try expect(tiledAfterActiveEdit != tiledBaseline, "tiled profile edit did not affect rendering")
+
+    tiled.layoutMode = .single
+    let singleBaseline = try WatermarkRenderer.encode(
+        image: WatermarkRenderer.render(source: source, template: tiled),
+        format: .png
+    )
+    tiled.tiledStyle.opacity = 0.05
+    tiled.tiledStyle.relativeHeight = 0.035
+    tiled.tiledStyle.rotationDegrees = 150
+    let singleAfterTiledEdit = try WatermarkRenderer.encode(
+        image: WatermarkRenderer.render(source: source, template: tiled),
+        format: .png
+    )
+    try expect(singleAfterTiledEdit == singleBaseline, "tiled profile leaked into single rendering")
 }
 
 runner.test("preview limits work while full render preserves pixels") {

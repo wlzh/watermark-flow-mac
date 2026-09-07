@@ -94,6 +94,42 @@ public enum WatermarkLayoutMode: String, Codable, CaseIterable, Sendable {
     }
 }
 
+public struct WatermarkVisualSettings: Codable, Equatable, Sendable {
+    public var foregroundColor: RGBAColor
+    public var backgroundColor: RGBAColor
+    public var accentColor: RGBAColor
+    public var opacity: Double
+    public var relativeHeight: Double
+    public var rotationDegrees: Double
+
+    public init(
+        foregroundColor: RGBAColor,
+        backgroundColor: RGBAColor,
+        accentColor: RGBAColor,
+        opacity: Double,
+        relativeHeight: Double,
+        rotationDegrees: Double
+    ) {
+        self.foregroundColor = foregroundColor
+        self.backgroundColor = backgroundColor
+        self.accentColor = accentColor
+        self.opacity = opacity
+        self.relativeHeight = relativeHeight
+        self.rotationDegrees = rotationDegrees
+    }
+
+    public func clamped() -> WatermarkVisualSettings {
+        WatermarkVisualSettings(
+            foregroundColor: foregroundColor.clamped(),
+            backgroundColor: backgroundColor.clamped(),
+            accentColor: accentColor.clamped(),
+            opacity: opacity.clamped(to: 0.05...1),
+            relativeHeight: relativeHeight.clamped(to: 0.035...0.3),
+            rotationDegrees: rotationDegrees.clamped(to: -180...180)
+        )
+    }
+}
+
 public struct WatermarkTemplate: Codable, Equatable, Identifiable, Sendable {
     public var id: UUID
     public var name: String
@@ -108,6 +144,7 @@ public struct WatermarkTemplate: Codable, Equatable, Identifiable, Sendable {
     public var rotationDegrees: Double
     public var layoutMode: WatermarkLayoutMode
     public var tileDensity: Double
+    public var tiledStyle: WatermarkVisualSettings
     public var customLogoPNG: Data?
     public var isBuiltIn: Bool
 
@@ -125,6 +162,7 @@ public struct WatermarkTemplate: Codable, Equatable, Identifiable, Sendable {
         rotationDegrees: Double = 0,
         layoutMode: WatermarkLayoutMode = .single,
         tileDensity: Double = 5,
+        tiledStyle: WatermarkVisualSettings? = nil,
         customLogoPNG: Data? = nil,
         isBuiltIn: Bool = false
     ) {
@@ -141,6 +179,14 @@ public struct WatermarkTemplate: Codable, Equatable, Identifiable, Sendable {
         self.rotationDegrees = rotationDegrees
         self.layoutMode = layoutMode
         self.tileDensity = tileDensity
+        self.tiledStyle = tiledStyle ?? WatermarkVisualSettings(
+            foregroundColor: foregroundColor,
+            backgroundColor: backgroundColor,
+            accentColor: accentColor,
+            opacity: opacity,
+            relativeHeight: relativeHeight,
+            rotationDegrees: rotationDegrees
+        )
         self.customLogoPNG = customLogoPNG
         self.isBuiltIn = isBuiltIn
     }
@@ -155,7 +201,74 @@ public struct WatermarkTemplate: Codable, Equatable, Identifiable, Sendable {
         copy.position = position.clamped()
         copy.rotationDegrees = rotationDegrees.clamped(to: -180...180)
         copy.tileDensity = tileDensity.clamped(to: 1...10)
+        copy.tiledStyle = tiledStyle.clamped()
         return copy
+    }
+
+    public var activeForegroundColor: RGBAColor {
+        get { layoutMode == .tiled ? tiledStyle.foregroundColor : foregroundColor }
+        set {
+            if layoutMode == .tiled {
+                tiledStyle.foregroundColor = newValue
+            } else {
+                foregroundColor = newValue
+            }
+        }
+    }
+
+    public var activeBackgroundColor: RGBAColor {
+        get { layoutMode == .tiled ? tiledStyle.backgroundColor : backgroundColor }
+        set {
+            if layoutMode == .tiled {
+                tiledStyle.backgroundColor = newValue
+            } else {
+                backgroundColor = newValue
+            }
+        }
+    }
+
+    public var activeAccentColor: RGBAColor {
+        get { layoutMode == .tiled ? tiledStyle.accentColor : accentColor }
+        set {
+            if layoutMode == .tiled {
+                tiledStyle.accentColor = newValue
+            } else {
+                accentColor = newValue
+            }
+        }
+    }
+
+    public var activeOpacity: Double {
+        get { layoutMode == .tiled ? tiledStyle.opacity : opacity }
+        set {
+            if layoutMode == .tiled {
+                tiledStyle.opacity = newValue
+            } else {
+                opacity = newValue
+            }
+        }
+    }
+
+    public var activeRelativeHeight: Double {
+        get { layoutMode == .tiled ? tiledStyle.relativeHeight : relativeHeight }
+        set {
+            if layoutMode == .tiled {
+                tiledStyle.relativeHeight = newValue
+            } else {
+                relativeHeight = newValue
+            }
+        }
+    }
+
+    public var activeRotationDegrees: Double {
+        get { layoutMode == .tiled ? tiledStyle.rotationDegrees : rotationDegrees }
+        set {
+            if layoutMode == .tiled {
+                tiledStyle.rotationDegrees = newValue
+            } else {
+                rotationDegrees = newValue
+            }
+        }
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -172,6 +285,7 @@ public struct WatermarkTemplate: Codable, Equatable, Identifiable, Sendable {
         case rotationDegrees
         case layoutMode
         case tileDensity
+        case tiledStyle
         case customLogoPNG
         case isBuiltIn
     }
@@ -191,6 +305,15 @@ public struct WatermarkTemplate: Codable, Equatable, Identifiable, Sendable {
         rotationDegrees = try container.decode(Double.self, forKey: .rotationDegrees)
         layoutMode = try container.decodeIfPresent(WatermarkLayoutMode.self, forKey: .layoutMode) ?? .single
         tileDensity = try container.decodeIfPresent(Double.self, forKey: .tileDensity) ?? 5
+        tiledStyle = try container.decodeIfPresent(WatermarkVisualSettings.self, forKey: .tiledStyle)
+            ?? WatermarkVisualSettings(
+                foregroundColor: foregroundColor,
+                backgroundColor: backgroundColor,
+                accentColor: accentColor,
+                opacity: opacity,
+                relativeHeight: relativeHeight,
+                rotationDegrees: rotationDegrees
+            )
         customLogoPNG = try container.decodeIfPresent(Data.self, forKey: .customLogoPNG)
         isBuiltIn = try container.decode(Bool.self, forKey: .isBuiltIn)
     }

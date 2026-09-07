@@ -230,13 +230,13 @@ public enum WatermarkRenderer {
         canvasSize: CGSize,
         template: WatermarkTemplate
     ) -> BadgeLayout {
-        let badgeHeight = max(24, canvasSize.height * template.relativeHeight)
+        let badgeHeight = max(24, canvasSize.height * template.activeRelativeHeight)
         let fontSize = badgeHeight * 0.4
         let font = NSFont(name: "Avenir Next Demi Bold", size: fontSize)
             ?? NSFont.boldSystemFont(ofSize: fontSize)
         let attributes: [NSAttributedString.Key: Any] = [
             .font: font,
-            .foregroundColor: template.foregroundColor.nsColor
+            .foregroundColor: template.activeForegroundColor.nsColor
         ]
         let line = CTLineCreateWithAttributedString(NSAttributedString(string: template.text, attributes: attributes))
         let textWidth = template.text.isEmpty ? 0 : CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
@@ -301,8 +301,8 @@ public enum WatermarkRenderer {
 
         context.saveGState()
         context.translateBy(x: center.x, y: center.y)
-        context.rotate(by: -CGFloat(template.rotationDegrees) * .pi / 180)
-        context.setAlpha(CGFloat(template.opacity))
+        context.rotate(by: -CGFloat(template.activeRotationDegrees) * .pi / 180)
+        context.setAlpha(CGFloat(template.activeOpacity))
 
         let badgeRect = CGRect(
             x: -badgeWidth / 2,
@@ -323,7 +323,7 @@ public enum WatermarkRenderer {
             blur: badgeHeight * 0.16,
             color: NSColor.black.withAlphaComponent(0.28).cgColor
         )
-        context.setFillColor(template.backgroundColor.nsColor.cgColor)
+        context.setFillColor(template.activeBackgroundColor.nsColor.cgColor)
         context.addPath(path)
         context.fillPath()
         context.restoreGState()
@@ -386,7 +386,7 @@ public enum WatermarkRenderer {
             let right = rect.maxX - inset
             let bottom = rect.minY + inset
             let top = rect.maxY - inset
-            context.setStrokeColor(template.accentColor.nsColor.cgColor)
+            context.setStrokeColor(template.activeAccentColor.nsColor.cgColor)
             context.setLineCap(.square)
             context.setLineWidth(rect.width * 0.13)
             context.move(to: CGPoint(x: left, y: top))
@@ -405,7 +405,7 @@ public enum WatermarkRenderer {
                 cornerHeight: logoRect.height * 0.25,
                 transform: nil
             )
-            context.setFillColor(template.accentColor.nsColor.cgColor)
+            context.setFillColor(template.activeAccentColor.nsColor.cgColor)
             context.addPath(logoPath)
             context.fillPath()
 
@@ -420,7 +420,7 @@ public enum WatermarkRenderer {
 
         case .custom:
             guard let customLogo else {
-                drawCustomPlaceholder(in: context, rect: rect, color: template.accentColor.nsColor)
+                drawCustomPlaceholder(in: context, rect: rect, color: template.activeAccentColor.nsColor)
                 return
             }
             let fitted = aspectFit(

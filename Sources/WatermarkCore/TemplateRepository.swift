@@ -1,7 +1,7 @@
 import Foundation
 
 public struct TemplateLibraryState: Codable, Equatable, Sendable {
-    public static let currentSchemaVersion = 2
+    public static let currentSchemaVersion = 3
 
     public var schemaVersion: Int
     public var templates: [WatermarkTemplate]
@@ -51,12 +51,21 @@ public final class TemplateRepository {
 
         let data = try Data(contentsOf: storageURL)
         if let state = try? JSONDecoder.watermarkFlow.decode(TemplateLibraryState.self, from: data) {
-            return normalized(state)
+            guard state.schemaVersion <= TemplateLibraryState.currentSchemaVersion else {
+                throw TemplateRepositoryError.unsupportedStorageFormat
+            }
+            let normalizedState = normalized(state)
+            if state.schemaVersion < TemplateLibraryState.currentSchemaVersion {
+                try saveLibrary(normalizedState)
+            }
+            return normalizedState
         }
 
         // v0.1.0 stored only an array of user templates.
         if let legacyTemplates = try? JSONDecoder.watermarkFlow.decode([WatermarkTemplate].self, from: data) {
-            return normalized(TemplateLibraryState(templates: legacyTemplates))
+            let normalizedState = normalized(TemplateLibraryState(templates: legacyTemplates))
+            try saveLibrary(normalizedState)
+            return normalizedState
         }
 
         throw TemplateRepositoryError.unsupportedStorageFormat
