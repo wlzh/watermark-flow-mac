@@ -206,6 +206,9 @@ struct EditorView: View {
                 .labelsHidden()
                 .controlSize(.large)
 
+                Button("＋ 新建 Logo + 文字模板") { viewModel.createCustomTemplate() }
+                    .buttonStyle(outlineButtonStyle)
+
                 HStack(spacing: 8) {
                     Circle()
                         .fill(viewModel.isWatermarkEnabled ? theme.accent : theme.textSecondary)
@@ -223,7 +226,7 @@ struct EditorView: View {
 
                 Divider()
                 sectionTitle("内容")
-                Picker("品牌", selection: $viewModel.workingTemplate.brand) {
+                Picker("图标类型", selection: $viewModel.workingTemplate.brand) {
                     ForEach(WatermarkBrand.allCases, id: \.self) { brand in
                         Text(brand.displayName).tag(brand)
                     }
@@ -232,8 +235,29 @@ struct EditorView: View {
                     .textFieldStyle(.roundedBorder)
 
                 if viewModel.workingTemplate.brand == .custom {
-                    Button("选择 Logo 图片…") { viewModel.importCustomLogo() }
+                    HStack {
+                        Button(viewModel.workingTemplate.customLogoPNG == nil ? "选择 Logo 图片…" : "更换 Logo 图片…") {
+                            viewModel.importCustomLogo()
+                        }
                         .buttonStyle(outlineButtonStyle)
+                        Spacer()
+                        Text(customLogoStatus)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(
+                                viewModel.workingTemplate.customLogoPNG == nil
+                                    ? theme.warning
+                                    : theme.textSecondary
+                            )
+                    }
+                } else if viewModel.workingTemplate.customLogoPNG != nil {
+                    HStack(spacing: 8) {
+                        Text("已嵌入的自定义 Logo 当前未显示")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(theme.warning)
+                        Spacer()
+                        Button("启用 Logo") { viewModel.workingTemplate.brand = .custom }
+                            .buttonStyle(outlineButtonStyle)
+                    }
                 }
 
                 Divider()
@@ -298,7 +322,7 @@ struct EditorView: View {
                 Divider()
                 sectionTitle("模板管理")
                 HStack {
-                    Button("另存模板") { viewModel.saveCurrentAsTemplate() }
+                    Button("复制当前模板") { viewModel.saveCurrentAsTemplate() }
                         .buttonStyle(outlineButtonStyle)
                     Button("设为默认") { viewModel.setSelectedAsDefault() }
                         .buttonStyle(outlineButtonStyle)
@@ -381,6 +405,11 @@ struct EditorView: View {
             return "满屏平铺 · 密度 \(Int(viewModel.workingTemplate.tileDensity.rounded())) 级"
         }
         return "拖动可定位 · 模板修改自动保存"
+    }
+
+    private var customLogoStatus: String {
+        guard let data = viewModel.workingTemplate.customLogoPNG else { return "尚未选择 Logo" }
+        return "已嵌入 · \(ByteCountFormatter.string(fromByteCount: Int64(data.count), countStyle: .file))"
     }
 
     private func sectionTitle(_ title: String) -> some View {

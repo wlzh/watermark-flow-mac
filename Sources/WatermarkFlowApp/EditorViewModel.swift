@@ -187,13 +187,26 @@ final class EditorViewModel: ObservableObject {
         panel.allowedContentTypes = [.png, .jpeg, .gif, .tiff, .webP]
         panel.allowsMultipleSelection = false
         panel.message = "选择自定义 Logo 图片"
-        guard panel.runModal() == .OK,
-              let url = panel.url,
-              let image = NSImage(contentsOf: url),
-              let data = try? WatermarkRenderer.normalizedLogoPNG(image: image) else { return }
-        workingTemplate.brand = .custom
-        workingTemplate.customLogoPNG = data
-        statusMessage = "已载入自定义 Logo：\(url.lastPathComponent)"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard let image = NSImage(contentsOf: url) else {
+            statusMessage = "无法读取 Logo 图片：\(url.lastPathComponent)"
+            return
+        }
+        _ = setCustomLogo(image: image, fileName: url.lastPathComponent)
+    }
+
+    @discardableResult
+    func setCustomLogo(image: NSImage, fileName: String = "Logo") -> Bool {
+        do {
+            let data = try WatermarkRenderer.normalizedLogoPNG(image: image)
+            workingTemplate.brand = .custom
+            workingTemplate.customLogoPNG = data
+            statusMessage = "已嵌入自定义 Logo：\(fileName)"
+            return true
+        } catch {
+            statusMessage = "Logo 导入失败：\(error.localizedDescription)"
+            return false
+        }
     }
 
     func generateAndCopy() {
@@ -249,20 +262,25 @@ final class EditorViewModel: ObservableObject {
     }
 
     func saveCurrentAsTemplate() {
-        flushPersistence()
         let alert = NSAlert()
-        alert.messageText = "保存水印模板"
-        alert.informativeText = "输入模板名称。当前图片不会保存到模板中。"
+        alert.messageText = "复制当前模板"
+        alert.informativeText = "把当前模板的全部设置复制为新模板。当前图片不会保存。"
         alert.addButton(withTitle: "保存")
         alert.addButton(withTitle: "取消")
         let field = NSTextField(string: workingTemplate.name + " 副本")
         field.frame = NSRect(x: 0, y: 0, width: 300, height: 24)
         alert.accessoryView = field
         guard alert.runModal() == .alertFirstButtonReturn else { return }
-        let name = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        _ = saveCurrentAsTemplate(named: field.stringValue)
+    }
+
+    @discardableResult
+    func saveCurrentAsTemplate(named rawName: String) -> UUID? {
+        flushPersistence()
+        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else {
             statusMessage = "模板名称不能为空"
-            return
+            return nil
         }
 
         var template = workingTemplate.clamped()
@@ -276,6 +294,46 @@ final class EditorViewModel: ObservableObject {
         persistenceEnabled = true
         persistLibrary()
         statusMessage = "已保存模板：\(name)"
+        return template.id
+    }
+
+    func createCustomTemplate() {
+        let alert = NSAlert()
+        alert.messageText = "新建 Logo + 文字模板"
+        alert.informativeText = "先创建独立模板，再选择 Logo、输入文字和调整样式，不会修改当前模板。"
+        alert.addButton(withTitle: "创建")
+        alert.addButton(withTitle: "取消")
+        let field = NSTextField(string: suggestedCustomTemplateName())
+        field.frame = NSRect(x: 0, y: 0, width: 300, height: 24)
+        alert.accessoryView = field
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        _ = createCustomTemplate(named: field.stringValue)
+    }
+
+    @discardableResult
+    func createCustomTemplate(named rawName: String) -> UUID? {
+        flushPersistence()
+        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else {
+            statusMessage = "模板名称不能为空"
+            return nil
+        }
+
+        var template = workingTemplate.clamped()
+        template.id = UUID()
+        template.name = name
+        template.brand = .custom
+        template.text = ""
+        template.customLogoPNG = nil
+        template.isBuiltIn = false
+        templates.append(template)
+        persistenceEnabled = false
+        selectedTemplateID = template.id
+        workingTemplate = template
+        persistenceEnabled = true
+        persistLibrary()
+        statusMessage = "已新建模板，请选择 Logo 并输入文字"
+        return template.id
     }
 
     func setSelectedAsDefault() {
@@ -463,6 +521,17 @@ final class EditorViewModel: ObservableObject {
         } catch {
             statusMessage = "保存模板失败：\(error.localizedDescription)"
         }
+    }
+
+    private func suggestedCustomTemplateName() -> String {
+        let base = "我的 Logo 水印"
+        let existingNames = Set(templates.map { $0.name.lowercased() })
+        guard existingNames.contains(base.lowercased()) else { return base }
+        var suffix = 2
+        while existingNames.contains("\(base) \(suffix)".lowercased()) {
+            suffix += 1
+        }
+        return "\(base) \(suffix)"
     }
 
     private static let canvasZoomLevels = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4, 5, 7.5, 10]

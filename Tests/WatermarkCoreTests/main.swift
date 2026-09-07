@@ -216,6 +216,58 @@ runner.test("user templates persist as JSON") {
     try expect(loaded == [userTemplate.clamped()], "template round-trip mismatch")
 }
 
+runner.test("custom logo and text template survives persistence and renders") {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("WatermarkCustomTemplateTests-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let repository = TemplateRepository(storageURL: root.appendingPathComponent("templates.json"))
+    let logo = try makeImage(width: 420, height: 180) { context in
+        context.clear(CGRect(x: 0, y: 0, width: 420, height: 180))
+        context.setFillColor(NSColor(calibratedRed: 0.05, green: 0.72, blue: 0.64, alpha: 0.86).cgColor)
+        context.fillEllipse(in: CGRect(x: 24, y: 12, width: 156, height: 156))
+        context.setFillColor(NSColor.white.cgColor)
+        context.fill(CGRect(x: 200, y: 58, width: 188, height: 64))
+    }
+    var custom = DefaultTemplates.all[0]
+    custom.id = UUID()
+    custom.name = "Custom Logo + Text"
+    custom.brand = .custom
+    custom.text = "@custom-account"
+    custom.customLogoPNG = try WatermarkRenderer.normalizedLogoPNG(image: logo)
+    custom.isBuiltIn = false
+    custom.layoutMode = .single
+    custom.position = NormalizedPoint(x: 0.23, y: 0.74)
+    custom.layoutMode = .tiled
+    custom.tileDensity = 7
+    custom.activeOpacity = 0.51
+    custom.activeRelativeHeight = 0.066
+    custom.activeRotationDegrees = 19
+
+    try repository.saveLibrary(TemplateLibraryState(
+        templates: DefaultTemplates.all + [custom],
+        lastSelectedTemplateID: custom.id
+    ))
+    let restoredLibrary = try repository.loadLibrary()
+    guard let restored = restoredLibrary.templates.first(where: { $0.id == custom.id }) else {
+        throw TestFailure(message: "saved custom template was not restored")
+    }
+    try expect(restored == custom.clamped(), "custom logo and text changed during persistence")
+    try expect(restored.brand == .custom, "custom icon type was lost")
+    try expect(restored.text == "@custom-account", "custom template text was lost")
+    try expect(restored.customLogoPNG?.isEmpty == false, "custom logo bytes were lost")
+    try expect(restoredLibrary.lastSelectedTemplateID == custom.id, "custom selection was lost")
+    guard let logoData = restored.customLogoPNG,
+          NSBitmapImageRep(data: logoData)?.cgImage != nil else {
+        throw TestFailure(message: "persisted custom logo PNG is not decodable")
+    }
+
+    let source = try sampleImage(width: 1_200, height: 800)
+    let output = try WatermarkRenderer.render(source: source, template: restored)
+    let sourcePNG = try WatermarkRenderer.encode(image: source, format: .png)
+    let outputPNG = try WatermarkRenderer.encode(image: output, format: .png)
+    try expect(outputPNG != sourcePNG, "restored custom logo and text rendered no watermark")
+}
+
 runner.test("complete library restores built-in overrides and last selection") {
     let root = FileManager.default.temporaryDirectory
         .appendingPathComponent("WatermarkLibraryTests-\(UUID().uuidString)", isDirectory: true)

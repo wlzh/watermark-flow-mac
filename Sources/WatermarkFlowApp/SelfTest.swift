@@ -30,6 +30,74 @@ enum SelfTest {
             throw Failure("template persistence mismatch")
         }
 
+        let customWorkflowRepository = TemplateRepository(
+            storageURL: temporary.deletingLastPathComponent().appendingPathComponent("custom-workflow.json")
+        )
+        let customWorkflowDefaultsName = "WatermarkFlow.CustomWorkflowSelfTest.\(UUID().uuidString)"
+        guard let customWorkflowDefaults = UserDefaults(suiteName: customWorkflowDefaultsName) else {
+            throw Failure("unable to create custom workflow defaults")
+        }
+        defer { customWorkflowDefaults.removePersistentDomain(forName: customWorkflowDefaultsName) }
+        let customEditor = EditorViewModel(
+            repository: customWorkflowRepository,
+            defaults: customWorkflowDefaults
+        )
+        let originalTemplate = customEditor.workingTemplate
+        guard let customTemplateID = customEditor.createCustomTemplate(named: "Logo + Text Self Test") else {
+            throw Failure("custom template creation failed")
+        }
+        guard customEditor.setCustomLogo(image: source, fileName: "self-test-logo.png") else {
+            throw Failure("custom logo import failed")
+        }
+        customEditor.workingTemplate.text = "@logo-and-text"
+        customEditor.workingTemplate.position = NormalizedPoint(x: 0.24, y: 0.76)
+        customEditor.workingTemplate.layoutMode = .tiled
+        customEditor.workingTemplate.tileDensity = 7
+        customEditor.workingTemplate.activeOpacity = 0.52
+        customEditor.workingTemplate.activeRelativeHeight = 0.067
+        customEditor.workingTemplate.activeRotationDegrees = 21
+        customEditor.flushPersistence()
+
+        guard customEditor.templates.count == 4,
+              customEditor.templates.first(where: { $0.id == originalTemplate.id }) == originalTemplate,
+              customEditor.selectedTemplateID == customTemplateID,
+              customEditor.workingTemplate.brand == .custom,
+              customEditor.workingTemplate.text == "@logo-and-text",
+              customEditor.workingTemplate.customLogoPNG?.isEmpty == false else {
+            throw Failure("new custom template changed its source or lost content")
+        }
+        let customOutput = try customEditor.renderForQuickApply(source: source, templateID: customTemplateID)
+        guard WatermarkRenderer.pixelSize(of: customOutput) == CGSize(width: 960, height: 540) else {
+            throw Failure("custom template quick render failed")
+        }
+        let restoredCustomEditor = EditorViewModel(
+            repository: customWorkflowRepository,
+            defaults: customWorkflowDefaults
+        )
+        guard restoredCustomEditor.selectedTemplateID == customTemplateID,
+              restoredCustomEditor.workingTemplate.name == "Logo + Text Self Test",
+              restoredCustomEditor.workingTemplate.brand == .custom,
+              restoredCustomEditor.workingTemplate.text == "@logo-and-text",
+              restoredCustomEditor.workingTemplate.customLogoPNG?.isEmpty == false,
+              restoredCustomEditor.workingTemplate.layoutMode == .tiled,
+              restoredCustomEditor.workingTemplate.tileDensity == 7,
+              restoredCustomEditor.workingTemplate.activeOpacity == 0.52,
+              restoredCustomEditor.workingTemplate.activeRelativeHeight == 0.067,
+              restoredCustomEditor.workingTemplate.activeRotationDegrees == 21 else {
+            throw Failure("custom logo and text template did not survive restart")
+        }
+        let templateBeforeCopy = restoredCustomEditor.workingTemplate
+        guard let copiedTemplateID = restoredCustomEditor.saveCurrentAsTemplate(named: "Logo + Text Copy"),
+              let copiedTemplate = restoredCustomEditor.templates.first(where: { $0.id == copiedTemplateID }),
+              restoredCustomEditor.templates.first(where: { $0.id == customTemplateID }) == templateBeforeCopy,
+              copiedTemplate.brand == .custom,
+              copiedTemplate.text == "@logo-and-text",
+              copiedTemplate.customLogoPNG?.isEmpty == false,
+              copiedTemplate.customLogoPNG == templateBeforeCopy.customLogoPNG,
+              copiedTemplate.tiledStyle == templateBeforeCopy.tiledStyle else {
+            throw Failure("copy current template lost custom logo, text, or style")
+        }
+
         let defaultsName = "WatermarkFlow.SelfTest.\(UUID().uuidString)"
         guard let isolatedDefaults = UserDefaults(suiteName: defaultsName) else {
             throw Failure("unable to create isolated defaults")
@@ -232,6 +300,9 @@ enum SelfTest {
         print("SELF_TEST_TEMPLATES=\(DefaultTemplates.all.count)")
         print("SELF_TEST_RENDER=PASS 960x540")
         print("SELF_TEST_PERSISTENCE=PASS")
+        print("SELF_TEST_CUSTOM_LOGO_TEXT_TEMPLATE=PASS")
+        print("SELF_TEST_CUSTOM_TEMPLATE_SOURCE_ISOLATION=PASS")
+        print("SELF_TEST_CUSTOM_TEMPLATE_COPY=PASS")
         print("SELF_TEST_AUTOSAVE_RESTART=PASS")
         print("SELF_TEST_POSITION_RESTORE=PASS value=0.31,0.42")
         print("SELF_TEST_TILED_LAYOUT=PASS density=8")
