@@ -64,6 +64,33 @@ func sampleImage(width: Int, height: Int) throws -> NSImage {
     }
 }
 
+func differingPixelCount(_ lhs: NSImage, _ rhs: NSImage) throws -> Int {
+    let lhsData = try WatermarkRenderer.encode(image: lhs, format: .png)
+    let rhsData = try WatermarkRenderer.encode(image: rhs, format: .png)
+    guard let lhsRep = NSBitmapImageRep(data: lhsData),
+          let rhsRep = NSBitmapImageRep(data: rhsData),
+          lhsRep.pixelsWide == rhsRep.pixelsWide,
+          lhsRep.pixelsHigh == rhsRep.pixelsHigh else {
+        throw TestFailure(message: "unable to compare rendered pixels")
+    }
+
+    var changed = 0
+    for y in 0..<lhsRep.pixelsHigh {
+        for x in 0..<lhsRep.pixelsWide {
+            guard let lhsColor = lhsRep.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB),
+                  let rhsColor = rhsRep.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB) else {
+                continue
+            }
+            let delta = abs(lhsColor.redComponent - rhsColor.redComponent)
+                + abs(lhsColor.greenComponent - rhsColor.greenComponent)
+                + abs(lhsColor.blueComponent - rhsColor.blueComponent)
+                + abs(lhsColor.alphaComponent - rhsColor.alphaComponent)
+            if delta > 0.01 { changed += 1 }
+        }
+    }
+    return changed
+}
+
 var runner = TestRunner()
 
 runner.test("application identity links are stable") {
@@ -84,6 +111,8 @@ runner.test("built-in templates are stable") {
     ], "template identifiers changed")
     try expect(DefaultTemplates.all.map(\.brand) == [.x, .x, .youtube], "template brands mismatch")
     try expect(DefaultTemplates.all.map(\.text) == ["@wlzh", "@gxjdian", "短裤AI分享"], "template text mismatch")
+    try expect(DefaultTemplates.all.allSatisfy { $0.layoutMode == .single }, "factory templates should default to single layout")
+    try expect(DefaultTemplates.all.allSatisfy { $0.tileDensity == 5 }, "factory tile density changed")
     try expect(DefaultTemplates.all.allSatisfy(\.isBuiltIn), "template must be built in")
 }
 
@@ -93,11 +122,13 @@ runner.test("template values clamp to rendering bounds") {
     template.relativeHeight = -2
     template.position = NormalizedPoint(x: -1, y: 3)
     template.rotationDegrees = 400
+    template.tileDensity = 99
     let clamped = template.clamped()
     try expect(clamped.opacity == 1, "opacity did not clamp")
     try expect(clamped.relativeHeight == 0.035, "height did not clamp")
     try expect(clamped.position == NormalizedPoint(x: 0, y: 1), "position did not clamp")
     try expect(clamped.rotationDegrees == 180, "rotation did not clamp")
+    try expect(clamped.tileDensity == 10, "tile density did not clamp")
 }
 
 runner.test("drag delta keeps clicks stable and moves relatively") {
@@ -143,6 +174,8 @@ runner.test("complete library restores built-in overrides and last selection") {
     builtInOverride.relativeHeight = 0.143
     builtInOverride.position = NormalizedPoint(x: 0.27, y: 0.64)
     builtInOverride.rotationDegrees = -17
+    builtInOverride.layoutMode = .tiled
+    builtInOverride.tileDensity = 9
 
     var userTemplate = builtInOverride
     userTemplate.id = UUID()
@@ -157,7 +190,7 @@ runner.test("complete library restores built-in overrides and last selection") {
     ))
     let restored = try repository.loadLibrary()
 
-    try expect(restored.schemaVersion == 1, "schema version mismatch")
+    try expect(restored.schemaVersion == 2, "schema version mismatch")
     try expect(restored.templates.count == 4, "template count mismatch")
     try expect(restored.templates[0] == builtInOverride.clamped(), "built-in override was not restored")
     try expect(restored.templates[3] == userTemplate.clamped(), "custom logo template was not restored")
@@ -180,10 +213,38 @@ runner.test("v0.1.0 template array migrates without data loss") {
     try JSONEncoder().encode([legacy]).write(to: storageURL, options: .atomic)
 
     let restored = try TemplateRepository(storageURL: storageURL).loadLibrary()
-    try expect(restored.schemaVersion == 1, "legacy state did not migrate schema")
+    try expect(restored.schemaVersion == 2, "legacy state did not migrate schema")
     try expect(restored.templates.count == 4, "factory templates were not merged")
     try expect(restored.templates.prefix(3).map(\.id) == DefaultTemplates.all.map(\.id), "factory order changed")
     try expect(restored.templates[3] == legacy.clamped(), "legacy user template was lost")
+}
+
+runner.test("v0.2.3 templates migrate to single layout defaults") {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("WatermarkLayoutMigrationTests-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let storageURL = root.appendingPathComponent("templates.json")
+    let encoded = try JSONEncoder().encode(TemplateLibraryState(
+        schemaVersion: 1,
+        templates: DefaultTemplates.all,
+        lastSelectedTemplateID: DefaultTemplates.xWLZHID
+    ))
+    guard var json = try JSONSerialization.jsonObject(with: encoded) as? [String: Any],
+          var templates = json["templates"] as? [[String: Any]] else {
+        throw TestFailure(message: "unable to create legacy template fixture")
+    }
+    for index in templates.indices {
+        templates[index].removeValue(forKey: "layoutMode")
+        templates[index].removeValue(forKey: "tileDensity")
+    }
+    json["templates"] = templates
+    try JSONSerialization.data(withJSONObject: json).write(to: storageURL, options: .atomic)
+
+    let restored = try TemplateRepository(storageURL: storageURL).loadLibrary()
+    try expect(restored.schemaVersion == 2, "layout migration did not advance schema")
+    try expect(restored.templates.allSatisfy { $0.layoutMode == .single }, "legacy layout did not default to single")
+    try expect(restored.templates.allSatisfy { $0.tileDensity == 5 }, "legacy density did not default to five")
 }
 
 runner.test("all built-in templates preserve source pixels") {
@@ -210,9 +271,21 @@ runner.test("preview limits work while full render preserves pixels") {
     let fullStarted = Date()
     let full = try WatermarkRenderer.render(source: source, template: DefaultTemplates.all[0])
     let fullMilliseconds = Date().timeIntervalSince(fullStarted) * 1_000
+    var tiledTemplate = DefaultTemplates.all[0]
+    tiledTemplate.layoutMode = .tiled
+    tiledTemplate.tileDensity = 10
+    let tiledStarted = Date()
+    let tiledFull = try WatermarkRenderer.render(source: source, template: tiledTemplate)
+    let tiledMilliseconds = Date().timeIntervalSince(tiledStarted) * 1_000
     try expect(WatermarkRenderer.pixelSize(of: preview) == CGSize(width: 1_200, height: 900), "preview size mismatch")
     try expect(WatermarkRenderer.pixelSize(of: full) == CGSize(width: 4_000, height: 3_000), "full render lost pixels")
-    print(String(format: "PERF preview_4k_ms=%.1f full_render_4k_ms=%.1f", previewMilliseconds, fullMilliseconds))
+    try expect(WatermarkRenderer.pixelSize(of: tiledFull) == CGSize(width: 4_000, height: 3_000), "tiled render lost pixels")
+    print(String(
+        format: "PERF preview_4k_ms=%.1f full_render_4k_ms=%.1f tiled_render_4k_ms=%.1f",
+        previewMilliseconds,
+        fullMilliseconds,
+        tiledMilliseconds
+    ))
 }
 
 runner.test("source-only render supports reversible watermark removal") {
@@ -226,6 +299,32 @@ runner.test("source-only render supports reversible watermark removal") {
     try expect(WatermarkRenderer.pixelSize(of: plain) == CGSize(width: 1_600, height: 900), "source-only output changed dimensions")
     try expect(WatermarkRenderer.pixelSize(of: preview) == CGSize(width: 800, height: 450), "source-only preview size mismatch")
     try expect(plainPNG != watermarkedPNG, "removing watermark did not change output")
+}
+
+runner.test("tiled watermark density increases full-screen coverage") {
+    let source = try makeImage(width: 900, height: 600) { context in
+        context.setFillColor(NSColor(calibratedWhite: 0.2, alpha: 1).cgColor)
+        context.fill(CGRect(x: 0, y: 0, width: 900, height: 600))
+    }
+    let plain = try WatermarkRenderer.renderSource(source: source)
+    var sparse = DefaultTemplates.all[0]
+    sparse.layoutMode = .tiled
+    sparse.tileDensity = 1
+    sparse.rotationDegrees = -22
+    let sparseOutput = try WatermarkRenderer.render(source: source, template: sparse)
+
+    var dense = sparse
+    dense.tileDensity = 10
+    let denseOutput = try WatermarkRenderer.render(source: source, template: dense)
+    let sparseChanged = try differingPixelCount(plain, sparseOutput)
+    let denseChanged = try differingPixelCount(plain, denseOutput)
+    let sparsePNG = try WatermarkRenderer.encode(image: sparseOutput, format: .png)
+    let densePNG = try WatermarkRenderer.encode(image: denseOutput, format: .png)
+
+    try expect(sparseChanged > 0, "sparse tiled watermark changed no pixels")
+    try expect(denseChanged > sparseChanged, "higher density did not increase coverage")
+    try expect(sparsePNG != densePNG, "density levels rendered identical output")
+    print("TILE_COVERAGE sparse_pixels=\(sparseChanged) dense_pixels=\(denseChanged)")
 }
 
 runner.test("high zoom preview is capped and never upscales source") {
@@ -299,6 +398,8 @@ runner.test("text and custom logo render to PNG and JPEG") {
     var logoTemplate = textTemplate
     logoTemplate.brand = .custom
     logoTemplate.customLogoPNG = try WatermarkRenderer.encode(image: logo, format: .png)
+    logoTemplate.layoutMode = .tiled
+    logoTemplate.tileDensity = 10
     let logoOutput = try WatermarkRenderer.render(source: source, template: logoTemplate)
 
     let textPNG = try WatermarkRenderer.encode(image: textOutput, format: .png)

@@ -78,19 +78,21 @@ struct EditorView: View {
                                 .frame(width: zoomed.width, height: zoomed.height)
                                 .shadow(color: .black.opacity(0.34), radius: 20, y: 8)
 
-                            Color.clear
-                                .contentShape(Rectangle())
-                                .frame(width: zoomed.width, height: zoomed.height)
-                                .gesture(
-                                    DragGesture(minimumDistance: 3)
-                                        .onChanged { value in
-                                            viewModel.updateWatermarkDrag(
-                                                translation: value.translation,
-                                                canvasSize: zoomed
-                                            )
-                                        }
-                                        .onEnded { _ in viewModel.endWatermarkDrag() }
-                                )
+                            if viewModel.workingTemplate.layoutMode == .single {
+                                Color.clear
+                                    .contentShape(Rectangle())
+                                    .frame(width: zoomed.width, height: zoomed.height)
+                                    .gesture(
+                                        DragGesture(minimumDistance: 3)
+                                            .onChanged { value in
+                                                viewModel.updateWatermarkDrag(
+                                                    translation: value.translation,
+                                                    canvasSize: zoomed
+                                                )
+                                            }
+                                            .onEnded { _ in viewModel.endWatermarkDrag() }
+                                    )
+                            }
                         }
                         .frame(width: content.width, height: content.height)
                     }
@@ -244,6 +246,25 @@ struct EditorView: View {
 
                 Divider()
                 sectionTitle("排版")
+                Picker("布局", selection: $viewModel.workingTemplate.layoutMode) {
+                    ForEach(WatermarkLayoutMode.allCases, id: \.self) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                if viewModel.workingTemplate.layoutMode == .tiled {
+                    valueSlider(
+                        title: "平铺密度",
+                        value: $viewModel.workingTemplate.tileDensity,
+                        range: 1...10,
+                        step: 1,
+                        label: "\(Int(viewModel.workingTemplate.tileDensity.rounded())) 级"
+                    )
+                    Text("满屏会重复当前水印；位置在切回单个模式后继续保留")
+                        .font(.system(size: 10))
+                        .foregroundStyle(theme.textSecondary)
+                }
                 valueSlider(
                     title: "透明度",
                     value: $viewModel.workingTemplate.opacity,
@@ -263,10 +284,12 @@ struct EditorView: View {
                     label: "\(Int(viewModel.workingTemplate.rotationDegrees))°"
                 )
 
-                Text("快速位置")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(theme.textSecondary)
-                positionGrid
+                if viewModel.workingTemplate.layoutMode == .single {
+                    Text("快速位置")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(theme.textSecondary)
+                    positionGrid
+                }
 
                 Divider()
                 sectionTitle("模板管理")
@@ -334,7 +357,7 @@ struct EditorView: View {
                 .buttonStyle(outlineButtonStyle)
                 .disabled(viewModel.sourceImage == nil)
             Spacer()
-            Text(viewModel.isWatermarkEnabled ? "拖动可定位 · 模板修改自动保存" : "选择其他模板可直接替换")
+            Text(footerHint)
                 .font(.system(size: 11))
                 .foregroundStyle(theme.textSecondary)
             Button("生成并复制") { viewModel.generateAndCopy() }
@@ -344,6 +367,16 @@ struct EditorView: View {
         .padding(.horizontal, 18)
         .padding(.vertical, 12)
         .background(theme.background)
+    }
+
+    private var footerHint: String {
+        if !viewModel.isWatermarkEnabled {
+            return "选择其他模板可直接替换"
+        }
+        if viewModel.workingTemplate.layoutMode == .tiled {
+            return "满屏平铺 · 密度 \(Int(viewModel.workingTemplate.tileDensity.rounded())) 级"
+        }
+        return "拖动可定位 · 模板修改自动保存"
     }
 
     private func sectionTitle(_ title: String) -> some View {
@@ -376,6 +409,7 @@ struct EditorView: View {
         title: String,
         value: Binding<Double>,
         range: ClosedRange<Double>,
+        step: Double? = nil,
         label: String
     ) -> some View {
         VStack(spacing: 3) {
@@ -385,8 +419,13 @@ struct EditorView: View {
                 Text(label).monospacedDigit().foregroundStyle(theme.textSecondary)
             }
             .font(.system(size: 11, weight: .medium))
-            Slider(value: value, in: range)
-                .tint(theme.accent)
+            if let step {
+                Slider(value: value, in: range, step: step)
+                    .tint(theme.accent)
+            } else {
+                Slider(value: value, in: range)
+                    .tint(theme.accent)
+            }
         }
     }
 

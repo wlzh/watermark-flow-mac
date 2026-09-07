@@ -93,7 +93,10 @@ final class EditorViewModel: ObservableObject {
     }
 
     func updateWatermarkDrag(translation: CGSize, canvasSize: CGSize) {
-        guard isWatermarkEnabled, canvasSize.width > 0, canvasSize.height > 0 else { return }
+        guard isWatermarkEnabled,
+              workingTemplate.layoutMode == .single,
+              canvasSize.width > 0,
+              canvasSize.height > 0 else { return }
         if dragStartPosition == nil {
             dragStartPosition = workingTemplate.position
         }
