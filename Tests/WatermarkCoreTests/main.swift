@@ -155,6 +155,8 @@ runner.test("single and tiled visual settings remain independent") {
     template.opacity = 0.82
     template.relativeHeight = 0.11
     template.rotationDegrees = -12
+    template.contrastMode = .foreground
+    template.contrastStrength = .soft
     template.position = NormalizedPoint(x: 0.18, y: 0.83)
 
     template.layoutMode = .tiled
@@ -164,6 +166,8 @@ runner.test("single and tiled visual settings remain independent") {
     template.activeOpacity = 0.43
     template.activeRelativeHeight = 0.065
     template.activeRotationDegrees = 31
+    template.activeContrastMode = .foregroundAndBackground
+    template.activeContrastStrength = .strong
     template.tileDensity = 9
 
     try expect(template.activeOpacity == 0.43, "tiled opacity was not active")
@@ -177,6 +181,8 @@ runner.test("single and tiled visual settings remain independent") {
     try expect(template.activeOpacity == 0.82, "single opacity was overwritten")
     try expect(template.activeRelativeHeight == 0.11, "single size was overwritten")
     try expect(template.activeRotationDegrees == -12, "single rotation was overwritten")
+    try expect(template.activeContrastMode == .foreground, "single contrast mode was overwritten")
+    try expect(template.activeContrastStrength == .soft, "single contrast strength was overwritten")
     try expect(template.position == NormalizedPoint(x: 0.18, y: 0.83), "single position was overwritten")
 
     template.layoutMode = .tiled
@@ -186,6 +192,8 @@ runner.test("single and tiled visual settings remain independent") {
     try expect(template.activeOpacity == 0.43, "tiled opacity was not restored")
     try expect(template.activeRelativeHeight == 0.065, "tiled size was not restored")
     try expect(template.activeRotationDegrees == 31, "tiled rotation was not restored")
+    try expect(template.activeContrastMode == .foregroundAndBackground, "tiled contrast mode was not restored")
+    try expect(template.activeContrastStrength == .strong, "tiled contrast strength was not restored")
     try expect(template.tileDensity == 9, "tiled density was not restored")
 }
 
@@ -306,7 +314,7 @@ runner.test("complete library restores built-in overrides and last selection") {
     ))
     let restored = try repository.loadLibrary()
 
-    try expect(restored.schemaVersion == 3, "schema version mismatch")
+    try expect(restored.schemaVersion == 4, "schema version mismatch")
     try expect(restored.templates.count == 4, "template count mismatch")
     try expect(restored.templates[0] == builtInOverride.clamped(), "built-in override was not restored")
     try expect(restored.templates[3] == userTemplate.clamped(), "custom logo template was not restored")
@@ -329,12 +337,12 @@ runner.test("v0.1.0 template array migrates without data loss") {
     try JSONEncoder().encode([legacy]).write(to: storageURL, options: .atomic)
 
     let restored = try TemplateRepository(storageURL: storageURL).loadLibrary()
-    try expect(restored.schemaVersion == 3, "legacy state did not migrate schema")
+    try expect(restored.schemaVersion == 4, "legacy state did not migrate schema")
     try expect(restored.templates.count == 4, "factory templates were not merged")
     try expect(restored.templates.prefix(3).map(\.id) == DefaultTemplates.all.map(\.id), "factory order changed")
     try expect(restored.templates[3] == legacy.clamped(), "legacy user template was lost")
     let migratedJSON = try String(contentsOf: storageURL, encoding: .utf8)
-    try expect(migratedJSON.contains("\"schemaVersion\" : 3"), "legacy array migration was not written to disk")
+    try expect(migratedJSON.contains("\"schemaVersion\" : 4"), "legacy array migration was not written to disk")
     try expect(migratedJSON.contains("\"tiledStyle\""), "legacy array is missing persisted tiled profile")
 }
 
@@ -362,7 +370,7 @@ runner.test("v0.2.3 templates migrate to single layout defaults") {
     try JSONSerialization.data(withJSONObject: json).write(to: storageURL, options: .atomic)
 
     let restored = try TemplateRepository(storageURL: storageURL).loadLibrary()
-    try expect(restored.schemaVersion == 3, "layout migration did not advance schema")
+    try expect(restored.schemaVersion == 4, "layout migration did not advance schema")
     try expect(restored.templates.allSatisfy { $0.layoutMode == .single }, "legacy layout did not default to single")
     try expect(restored.templates.allSatisfy { $0.tileDensity == 5 }, "legacy density did not default to five")
     try expect(restored.templates.allSatisfy {
@@ -374,7 +382,7 @@ runner.test("v0.2.3 templates migrate to single layout defaults") {
             && $0.tiledStyle.rotationDegrees == $0.rotationDegrees
     }, "legacy visual settings were not copied into tiled style")
     let migratedJSON = try String(contentsOf: storageURL, encoding: .utf8)
-    try expect(migratedJSON.contains("\"schemaVersion\" : 3"), "schema 1 migration was not written to disk")
+    try expect(migratedJSON.contains("\"schemaVersion\" : 4"), "schema 1 migration was not written to disk")
     try expect(migratedJSON.contains("\"tiledStyle\""), "schema 1 migration is missing persisted tiled profile")
 }
 
@@ -410,7 +418,7 @@ runner.test("v0.3.0 shared visual settings migrate into tiled profile") {
 
     let restored = try TemplateRepository(storageURL: storageURL).loadLibrary()
     let migrated = restored.templates[0]
-    try expect(restored.schemaVersion == 3, "dual-style migration did not advance schema")
+    try expect(restored.schemaVersion == 4, "dual-style migration did not advance schema")
     try expect(migrated.layoutMode == .tiled, "v0.3.0 layout mode changed during migration")
     try expect(migrated.tileDensity == 8, "v0.3.0 density changed during migration")
     try expect(migrated.tiledStyle.foregroundColor == legacy.foregroundColor, "foreground was not migrated")
@@ -420,8 +428,46 @@ runner.test("v0.3.0 shared visual settings migrate into tiled profile") {
     try expect(migrated.tiledStyle.relativeHeight == legacy.relativeHeight, "size was not migrated")
     try expect(migrated.tiledStyle.rotationDegrees == legacy.rotationDegrees, "rotation was not migrated")
     let migratedJSON = try String(contentsOf: storageURL, encoding: .utf8)
-    try expect(migratedJSON.contains("\"schemaVersion\" : 3"), "schema 2 migration was not written to disk")
+    try expect(migratedJSON.contains("\"schemaVersion\" : 4"), "schema 2 migration was not written to disk")
     try expect(migratedJSON.contains("\"tiledStyle\""), "schema 2 migration is missing persisted tiled profile")
+}
+
+runner.test("v0.3.2 visual profiles migrate with adaptive contrast disabled") {
+    let root = FileManager.default.temporaryDirectory
+        .appendingPathComponent("WatermarkContrastMigrationTests-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    let storageURL = root.appendingPathComponent("templates.json")
+    let encoded = try JSONEncoder().encode(TemplateLibraryState(
+        schemaVersion: 3,
+        templates: DefaultTemplates.all,
+        lastSelectedTemplateID: DefaultTemplates.xGXJDianID
+    ))
+    guard var json = try JSONSerialization.jsonObject(with: encoded) as? [String: Any],
+          var templates = json["templates"] as? [[String: Any]] else {
+        throw TestFailure(message: "unable to create v0.3.2 template fixture")
+    }
+    for index in templates.indices {
+        templates[index].removeValue(forKey: "contrastMode")
+        templates[index].removeValue(forKey: "contrastStrength")
+        if var tiled = templates[index]["tiledStyle"] as? [String: Any] {
+            tiled.removeValue(forKey: "contrastMode")
+            tiled.removeValue(forKey: "contrastStrength")
+            templates[index]["tiledStyle"] = tiled
+        }
+    }
+    json["templates"] = templates
+    try JSONSerialization.data(withJSONObject: json).write(to: storageURL, options: .atomic)
+
+    let restored = try TemplateRepository(storageURL: storageURL).loadLibrary()
+    try expect(restored.schemaVersion == 4, "contrast migration did not advance schema")
+    try expect(restored.templates.allSatisfy { $0.contrastMode == .off }, "single contrast should migrate off")
+    try expect(restored.templates.allSatisfy { $0.contrastStrength == .standard }, "single strength should migrate standard")
+    try expect(restored.templates.allSatisfy { $0.tiledStyle.contrastMode == .off }, "tiled contrast should migrate off")
+    try expect(restored.templates.allSatisfy { $0.tiledStyle.contrastStrength == .standard }, "tiled strength should migrate standard")
+    let migratedJSON = try String(contentsOf: storageURL, encoding: .utf8)
+    try expect(migratedJSON.contains("\"schemaVersion\" : 4"), "schema 3 migration was not written")
+    try expect(migratedJSON.contains("\"contrastMode\" : \"off\""), "migrated contrast mode was not persisted")
 }
 
 runner.test("future template schema fails closed without rewriting data") {
@@ -445,6 +491,106 @@ runner.test("future template schema fails closed without rewriting data") {
     }
     let after = try Data(contentsOf: storageURL)
     try expect(after == before, "future schema data was rewritten")
+}
+
+runner.test("adaptive contrast resolves local tones without overwriting manual colors") {
+    let foreground = RGBAColor(hex: 0x247a91, alpha: 0.73)
+    let background = RGBAColor(hex: 0xf2c04f, alpha: 0.31)
+    let accent = RGBAColor(hex: 0xff0033, alpha: 0.88)
+    let off = AdaptiveContrastResolver.resolve(
+        foreground: foreground,
+        background: background,
+        accent: accent,
+        brand: .youtube,
+        mode: .off,
+        strength: .strong,
+        statistics: WatermarkLuminanceStatistics(mean: 1, deviation: 0.5)
+    )
+    try expect(off == ResolvedWatermarkColors(
+        foreground: foreground,
+        background: background,
+        accent: accent
+    ), "disabled adaptive contrast changed manual colors")
+
+    let darkRegion = AdaptiveContrastResolver.resolve(
+        foreground: foreground,
+        background: background,
+        accent: accent,
+        brand: .youtube,
+        mode: .foreground,
+        strength: .standard,
+        statistics: WatermarkLuminanceStatistics(mean: 0.02, deviation: 0.01)
+    )
+    try expect(darkRegion.foreground == RGBAColor(red: 0.95, green: 0.95, blue: 0.95, alpha: 0.73), "dark region did not choose light text")
+    try expect(darkRegion.background == background, "foreground-only mode changed background")
+    try expect(darkRegion.accent == accent, "YouTube accent should retain brand color")
+
+    let busyLightRegion = AdaptiveContrastResolver.resolve(
+        foreground: foreground,
+        background: background,
+        accent: accent,
+        brand: .x,
+        mode: .foregroundAndBackground,
+        strength: .standard,
+        statistics: WatermarkLuminanceStatistics(mean: 0.92, deviation: 0.24)
+    )
+    try expect(busyLightRegion.foreground == RGBAColor(red: 0.95, green: 0.95, blue: 0.95, alpha: 0.73), "light region did not choose light text over dark backplate")
+    try expect(busyLightRegion.background == RGBAColor(red: 0.06, green: 0.06, blue: 0.06, alpha: 0.72), "busy region did not strengthen contrasting backplate")
+    try expect(busyLightRegion.accent == RGBAColor(red: 0.95, green: 0.95, blue: 0.95, alpha: 0.88), "X accent did not follow adaptive foreground")
+}
+
+runner.test("adaptive contrast renders uniform and split images at full resolution") {
+    let black = try makeImage(width: 1_000, height: 600) { context in
+        context.setFillColor(NSColor.black.cgColor)
+        context.fill(CGRect(x: 0, y: 0, width: 1_000, height: 600))
+    }
+    let split = try makeImage(width: 1_000, height: 600) { context in
+        context.setFillColor(NSColor.black.cgColor)
+        context.fill(CGRect(x: 0, y: 0, width: 500, height: 600))
+        context.setFillColor(NSColor.white.cgColor)
+        context.fill(CGRect(x: 500, y: 0, width: 500, height: 600))
+    }
+    var template = DefaultTemplates.all[0]
+    template.contrastMode = .foregroundAndBackground
+    template.contrastStrength = .strong
+    template.position = NormalizedPoint(x: 0.25, y: 0.5)
+    let darkOutput = try WatermarkRenderer.render(source: black, template: template)
+    let splitLeftOutput = try WatermarkRenderer.render(source: split, template: template)
+    var expectedLeft = template
+    expectedLeft.contrastMode = .off
+    expectedLeft.foregroundColor = RGBAColor(hex: 0x000000)
+    expectedLeft.backgroundColor = RGBAColor(hex: 0xffffff, alpha: 0.82)
+    expectedLeft.accentColor = RGBAColor(hex: 0x000000)
+    let expectedSplitLeftOutput = try WatermarkRenderer.render(source: split, template: expectedLeft)
+    template.position = NormalizedPoint(x: 0.75, y: 0.5)
+    let splitRightOutput = try WatermarkRenderer.render(source: split, template: template)
+    var expectedRight = template
+    expectedRight.contrastMode = .off
+    expectedRight.foregroundColor = RGBAColor(hex: 0xffffff)
+    expectedRight.backgroundColor = RGBAColor(hex: 0x000000, alpha: 0.82)
+    expectedRight.accentColor = RGBAColor(hex: 0xffffff)
+    let expectedSplitRightOutput = try WatermarkRenderer.render(source: split, template: expectedRight)
+    let leftPNG = try WatermarkRenderer.encode(image: splitLeftOutput, format: .png)
+    let rightPNG = try WatermarkRenderer.encode(image: splitRightOutput, format: .png)
+    let expectedLeftPNG = try WatermarkRenderer.encode(image: expectedSplitLeftOutput, format: .png)
+    let expectedRightPNG = try WatermarkRenderer.encode(image: expectedSplitRightOutput, format: .png)
+    try expect(WatermarkRenderer.pixelSize(of: darkOutput) == CGSize(width: 1_000, height: 600), "adaptive render changed dimensions")
+    try expect(leftPNG != rightPNG, "local image regions did not produce distinct adaptive renders")
+    try expect(
+        leftPNG == expectedLeftPNG,
+        "left dark region did not use the expected local adaptive colors"
+    )
+    try expect(
+        rightPNG == expectedRightPNG,
+        "right light region did not use the expected local adaptive colors"
+    )
+
+    template.layoutMode = .tiled
+    template.activeContrastMode = .foregroundAndBackground
+    template.activeContrastStrength = .strong
+    template.tileDensity = 10
+    let tiled = try WatermarkRenderer.render(source: split, template: template)
+    try expect(WatermarkRenderer.pixelSize(of: tiled) == CGSize(width: 1_000, height: 600), "adaptive tiled render changed dimensions")
 }
 
 runner.test("all built-in templates preserve source pixels") {
@@ -526,15 +672,81 @@ runner.test("preview limits work while full render preserves pixels") {
     let tiledStarted = Date()
     let tiledFull = try WatermarkRenderer.render(source: source, template: tiledTemplate)
     let tiledMilliseconds = Date().timeIntervalSince(tiledStarted) * 1_000
+    tiledTemplate.activeContrastMode = .foregroundAndBackground
+    tiledTemplate.activeContrastStrength = .standard
+    let adaptiveStarted = Date()
+    let adaptiveTiledFull = try WatermarkRenderer.render(source: source, template: tiledTemplate)
+    let adaptiveMilliseconds = Date().timeIntervalSince(adaptiveStarted) * 1_000
     try expect(WatermarkRenderer.pixelSize(of: preview) == CGSize(width: 1_200, height: 900), "preview size mismatch")
     try expect(WatermarkRenderer.pixelSize(of: full) == CGSize(width: 4_000, height: 3_000), "full render lost pixels")
     try expect(WatermarkRenderer.pixelSize(of: tiledFull) == CGSize(width: 4_000, height: 3_000), "tiled render lost pixels")
+    try expect(WatermarkRenderer.pixelSize(of: adaptiveTiledFull) == CGSize(width: 4_000, height: 3_000), "adaptive tiled render lost pixels")
     print(String(
-        format: "PERF preview_4k_ms=%.1f full_render_4k_ms=%.1f tiled_render_4k_ms=%.1f",
+        format: "PERF preview_4k_ms=%.1f full_render_4k_ms=%.1f tiled_render_4k_ms=%.1f adaptive_tiled_4k_ms=%.1f",
         previewMilliseconds,
         fullMilliseconds,
-        tiledMilliseconds
+        tiledMilliseconds,
+        adaptiveMilliseconds
     ))
+}
+
+runner.test("transparent source pixels use white as adaptive contrast fallback") {
+    let transparent = try makeImage(width: 600, height: 400) { context in
+        context.clear(CGRect(x: 0, y: 0, width: 600, height: 400))
+    }
+    var adaptive = DefaultTemplates.all[0]
+    adaptive.position = NormalizedPoint(x: 0.5, y: 0.5)
+    adaptive.contrastMode = .foreground
+    adaptive.contrastStrength = .strong
+    let adaptiveOutput = try WatermarkRenderer.render(source: transparent, template: adaptive)
+    var expected = adaptive
+    expected.contrastMode = .off
+    expected.foregroundColor = RGBAColor(hex: 0x000000)
+    expected.accentColor = RGBAColor(hex: 0x000000)
+    let expectedOutput = try WatermarkRenderer.render(source: transparent, template: expected)
+    let adaptivePNG = try WatermarkRenderer.encode(image: adaptiveOutput, format: .png)
+    let expectedPNG = try WatermarkRenderer.encode(image: expectedOutput, format: .png)
+    try expect(adaptivePNG == expectedPNG, "transparent region did not fall back to white")
+}
+
+runner.test("adaptive luminance sampling distinguishes red and blue channels") {
+    let split = try makeImage(width: 800, height: 400) { context in
+        context.setFillColor(NSColor.red.cgColor)
+        context.fill(CGRect(x: 0, y: 0, width: 400, height: 400))
+        context.setFillColor(NSColor.blue.cgColor)
+        context.fill(CGRect(x: 400, y: 0, width: 400, height: 400))
+    }
+    var adaptive = DefaultTemplates.all[0]
+    adaptive.contrastMode = .foreground
+    adaptive.contrastStrength = .strong
+    adaptive.position = NormalizedPoint(x: 0.25, y: 0.5)
+    let redAdaptive = try WatermarkRenderer.render(source: split, template: adaptive)
+    var redExpected = adaptive
+    redExpected.contrastMode = .off
+    redExpected.foregroundColor = RGBAColor(hex: 0x000000)
+    redExpected.accentColor = RGBAColor(hex: 0x000000)
+    let redManual = try WatermarkRenderer.render(source: split, template: redExpected)
+
+    adaptive.position = NormalizedPoint(x: 0.75, y: 0.5)
+    let blueAdaptive = try WatermarkRenderer.render(source: split, template: adaptive)
+    var blueExpected = adaptive
+    blueExpected.contrastMode = .off
+    blueExpected.foregroundColor = RGBAColor(hex: 0xffffff)
+    blueExpected.accentColor = RGBAColor(hex: 0xffffff)
+    let blueManual = try WatermarkRenderer.render(source: split, template: blueExpected)
+    let redAdaptivePNG = try WatermarkRenderer.encode(image: redAdaptive, format: .png)
+    let redManualPNG = try WatermarkRenderer.encode(image: redManual, format: .png)
+    let blueAdaptivePNG = try WatermarkRenderer.encode(image: blueAdaptive, format: .png)
+    let blueManualPNG = try WatermarkRenderer.encode(image: blueManual, format: .png)
+
+    try expect(
+        redAdaptivePNG == redManualPNG,
+        "red region luminance used the wrong channel order"
+    )
+    try expect(
+        blueAdaptivePNG == blueManualPNG,
+        "blue region luminance used the wrong channel order"
+    )
 }
 
 runner.test("source-only render supports reversible watermark removal") {

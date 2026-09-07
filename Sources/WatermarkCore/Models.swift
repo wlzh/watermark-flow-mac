@@ -94,6 +94,48 @@ public enum WatermarkLayoutMode: String, Codable, CaseIterable, Sendable {
     }
 }
 
+public enum WatermarkContrastMode: String, Codable, CaseIterable, Sendable {
+    case off
+    case foreground
+    case foregroundAndBackground
+
+    public var displayName: String {
+        switch self {
+        case .off: return "关闭"
+        case .foreground: return "仅文字"
+        case .foregroundAndBackground: return "文字 + 背景"
+        }
+    }
+}
+
+public enum WatermarkContrastStrength: String, Codable, CaseIterable, Sendable {
+    case soft
+    case standard
+    case strong
+
+    public var displayName: String {
+        switch self {
+        case .soft: return "柔和"
+        case .standard: return "标准"
+        case .strong: return "强烈"
+        }
+    }
+}
+
+public enum ClipboardAutoLoadMode: String, Codable, CaseIterable, Sendable {
+    case off
+    case emptyCanvas
+    case alwaysReplace
+
+    public var displayName: String {
+        switch self {
+        case .off: return "关闭"
+        case .emptyCanvas: return "仅空画布自动载入"
+        case .alwaysReplace: return "始终自动替换"
+        }
+    }
+}
+
 public struct WatermarkVisualSettings: Codable, Equatable, Sendable {
     public var foregroundColor: RGBAColor
     public var backgroundColor: RGBAColor
@@ -101,6 +143,8 @@ public struct WatermarkVisualSettings: Codable, Equatable, Sendable {
     public var opacity: Double
     public var relativeHeight: Double
     public var rotationDegrees: Double
+    public var contrastMode: WatermarkContrastMode
+    public var contrastStrength: WatermarkContrastStrength
 
     public init(
         foregroundColor: RGBAColor,
@@ -108,7 +152,9 @@ public struct WatermarkVisualSettings: Codable, Equatable, Sendable {
         accentColor: RGBAColor,
         opacity: Double,
         relativeHeight: Double,
-        rotationDegrees: Double
+        rotationDegrees: Double,
+        contrastMode: WatermarkContrastMode = .off,
+        contrastStrength: WatermarkContrastStrength = .standard
     ) {
         self.foregroundColor = foregroundColor
         self.backgroundColor = backgroundColor
@@ -116,6 +162,8 @@ public struct WatermarkVisualSettings: Codable, Equatable, Sendable {
         self.opacity = opacity
         self.relativeHeight = relativeHeight
         self.rotationDegrees = rotationDegrees
+        self.contrastMode = contrastMode
+        self.contrastStrength = contrastStrength
     }
 
     public func clamped() -> WatermarkVisualSettings {
@@ -125,8 +173,33 @@ public struct WatermarkVisualSettings: Codable, Equatable, Sendable {
             accentColor: accentColor.clamped(),
             opacity: opacity.clamped(to: 0.05...1),
             relativeHeight: relativeHeight.clamped(to: 0.035...0.3),
-            rotationDegrees: rotationDegrees.clamped(to: -180...180)
+            rotationDegrees: rotationDegrees.clamped(to: -180...180),
+            contrastMode: contrastMode,
+            contrastStrength: contrastStrength
         )
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case foregroundColor
+        case backgroundColor
+        case accentColor
+        case opacity
+        case relativeHeight
+        case rotationDegrees
+        case contrastMode
+        case contrastStrength
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        foregroundColor = try container.decode(RGBAColor.self, forKey: .foregroundColor)
+        backgroundColor = try container.decode(RGBAColor.self, forKey: .backgroundColor)
+        accentColor = try container.decode(RGBAColor.self, forKey: .accentColor)
+        opacity = try container.decode(Double.self, forKey: .opacity)
+        relativeHeight = try container.decode(Double.self, forKey: .relativeHeight)
+        rotationDegrees = try container.decode(Double.self, forKey: .rotationDegrees)
+        contrastMode = try container.decodeIfPresent(WatermarkContrastMode.self, forKey: .contrastMode) ?? .off
+        contrastStrength = try container.decodeIfPresent(WatermarkContrastStrength.self, forKey: .contrastStrength) ?? .standard
     }
 }
 
@@ -142,6 +215,8 @@ public struct WatermarkTemplate: Codable, Equatable, Identifiable, Sendable {
     public var relativeHeight: Double
     public var position: NormalizedPoint
     public var rotationDegrees: Double
+    public var contrastMode: WatermarkContrastMode
+    public var contrastStrength: WatermarkContrastStrength
     public var layoutMode: WatermarkLayoutMode
     public var tileDensity: Double
     public var tiledStyle: WatermarkVisualSettings
@@ -160,6 +235,8 @@ public struct WatermarkTemplate: Codable, Equatable, Identifiable, Sendable {
         relativeHeight: Double = 0.09,
         position: NormalizedPoint = NormalizedPoint(x: 0.82, y: 0.9),
         rotationDegrees: Double = 0,
+        contrastMode: WatermarkContrastMode = .off,
+        contrastStrength: WatermarkContrastStrength = .standard,
         layoutMode: WatermarkLayoutMode = .single,
         tileDensity: Double = 5,
         tiledStyle: WatermarkVisualSettings? = nil,
@@ -177,6 +254,8 @@ public struct WatermarkTemplate: Codable, Equatable, Identifiable, Sendable {
         self.relativeHeight = relativeHeight
         self.position = position
         self.rotationDegrees = rotationDegrees
+        self.contrastMode = contrastMode
+        self.contrastStrength = contrastStrength
         self.layoutMode = layoutMode
         self.tileDensity = tileDensity
         self.tiledStyle = tiledStyle ?? WatermarkVisualSettings(
@@ -185,7 +264,9 @@ public struct WatermarkTemplate: Codable, Equatable, Identifiable, Sendable {
             accentColor: accentColor,
             opacity: opacity,
             relativeHeight: relativeHeight,
-            rotationDegrees: rotationDegrees
+            rotationDegrees: rotationDegrees,
+            contrastMode: contrastMode,
+            contrastStrength: contrastStrength
         )
         self.customLogoPNG = customLogoPNG
         self.isBuiltIn = isBuiltIn
@@ -271,6 +352,28 @@ public struct WatermarkTemplate: Codable, Equatable, Identifiable, Sendable {
         }
     }
 
+    public var activeContrastMode: WatermarkContrastMode {
+        get { layoutMode == .tiled ? tiledStyle.contrastMode : contrastMode }
+        set {
+            if layoutMode == .tiled {
+                tiledStyle.contrastMode = newValue
+            } else {
+                contrastMode = newValue
+            }
+        }
+    }
+
+    public var activeContrastStrength: WatermarkContrastStrength {
+        get { layoutMode == .tiled ? tiledStyle.contrastStrength : contrastStrength }
+        set {
+            if layoutMode == .tiled {
+                tiledStyle.contrastStrength = newValue
+            } else {
+                contrastStrength = newValue
+            }
+        }
+    }
+
     private enum CodingKeys: String, CodingKey {
         case id
         case name
@@ -283,6 +386,8 @@ public struct WatermarkTemplate: Codable, Equatable, Identifiable, Sendable {
         case relativeHeight
         case position
         case rotationDegrees
+        case contrastMode
+        case contrastStrength
         case layoutMode
         case tileDensity
         case tiledStyle
@@ -303,6 +408,8 @@ public struct WatermarkTemplate: Codable, Equatable, Identifiable, Sendable {
         relativeHeight = try container.decode(Double.self, forKey: .relativeHeight)
         position = try container.decode(NormalizedPoint.self, forKey: .position)
         rotationDegrees = try container.decode(Double.self, forKey: .rotationDegrees)
+        contrastMode = try container.decodeIfPresent(WatermarkContrastMode.self, forKey: .contrastMode) ?? .off
+        contrastStrength = try container.decodeIfPresent(WatermarkContrastStrength.self, forKey: .contrastStrength) ?? .standard
         layoutMode = try container.decodeIfPresent(WatermarkLayoutMode.self, forKey: .layoutMode) ?? .single
         tileDensity = try container.decodeIfPresent(Double.self, forKey: .tileDensity) ?? 5
         tiledStyle = try container.decodeIfPresent(WatermarkVisualSettings.self, forKey: .tiledStyle)
@@ -312,7 +419,9 @@ public struct WatermarkTemplate: Codable, Equatable, Identifiable, Sendable {
                 accentColor: accentColor,
                 opacity: opacity,
                 relativeHeight: relativeHeight,
-                rotationDegrees: rotationDegrees
+                rotationDegrees: rotationDegrees,
+                contrastMode: contrastMode,
+                contrastStrength: contrastStrength
             )
         customLogoPNG = try container.decodeIfPresent(Data.self, forKey: .customLogoPNG)
         isBuiltIn = try container.decode(Bool.self, forKey: .isBuiltIn)

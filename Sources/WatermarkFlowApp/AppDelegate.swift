@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var globalHotKey: GlobalHotKey?
     private var quickTemplateMenu: NSMenu?
     private var defaultQuickMenuItem: NSMenuItem?
+    private var clipboardTimer: Timer?
 
     override convenience init() {
         self.init(viewModel: EditorViewModel())
@@ -39,6 +40,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         viewModel.hotKeyRegistrationHandler = { [weak self] configuration in
             self?.updateGlobalHotKey(configuration) ?? false
         }
+        viewModel.clipboardModeChangeHandler = { [weak self] in
+            self?.inspectClipboard(forceCurrent: true)
+        }
+        startClipboardMonitoring()
         showEditor()
     }
 
@@ -48,6 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        clipboardTimer?.invalidate()
         viewModel.flushPersistence()
     }
 
@@ -72,6 +78,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         NSApp.activate(ignoringOtherApps: true)
         windowController?.showWindow(nil)
         windowController?.window?.makeKeyAndOrderFront(nil)
+        DispatchQueue.main.async { [weak self] in
+            self?.inspectClipboard()
+        }
     }
 
     @objc func pasteAndEdit() {
@@ -173,6 +182,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         item.button?.toolTip = "WatermarkFlow · \(viewModel.hotKeyConfiguration.displayName) 快速加水印"
 
         let menu = NSMenu()
+        menu.delegate = self
         menu.addItem(menuItem("打开编辑器", action: #selector(showEditor)))
         menu.addItem(menuItem("从剪贴板载入并编辑", action: #selector(pasteAndEdit)))
         let quick = NSMenuItem(title: "选择模板快速生成并复制", action: nil, keyEquivalent: "")
@@ -180,7 +190,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         quick.submenu = submenu
         menu.addItem(quick)
         let defaultQuick = menuItem(
-            "使用默认模板 · \(viewModel.hotKeyConfiguration.displayName)",
+            defaultQuickMenuTitle,
             action: #selector(quickApply)
         )
         defaultQuickMenuItem = defaultQuick
@@ -261,6 +271,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     func menuWillOpen(_ menu: NSMenu) {
+        defaultQuickMenuItem?.title = defaultQuickMenuTitle
         if menu === quickTemplateMenu {
             rebuildQuickTemplateMenu()
         }
@@ -279,9 +290,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     private func updateGlobalHotKey(_ configuration: HotKeyConfiguration) -> Bool {
         guard globalHotKey?.update(configuration: configuration) == true else { return false }
-        defaultQuickMenuItem?.title = "使用默认模板 · \(configuration.displayName)"
+        defaultQuickMenuItem?.title = defaultQuickMenuTitle
         statusItem?.button?.toolTip = "WatermarkFlow · \(configuration.displayName) 快速加水印"
         return true
+    }
+
+    var defaultQuickMenuTitle: String {
+        "使用快捷默认模板：\(viewModel.defaultTemplateName) · \(viewModel.hotKeyConfiguration.displayName)"
+    }
+
+    private func startClipboardMonitoring() {
+        clipboardTimer?.invalidate()
+        let timer = Timer(timeInterval: 0.75, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self,
+                      self.windowController?.window?.isVisible == true else { return }
+                self.inspectClipboard()
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        clipboardTimer = timer
+    }
+
+    @discardableResult
+    func inspectClipboard(
+        _ pasteboard: NSPasteboard = .general,
+        forceCurrent: Bool = false
+    ) -> ClipboardObservationResult {
+        viewModel.observeClipboard(pasteboard, forceCurrent: forceCurrent)
     }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {

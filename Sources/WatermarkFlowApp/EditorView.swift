@@ -20,6 +20,10 @@ struct EditorView: View {
                     .frame(minWidth: 300, idealWidth: 320, maxWidth: 350)
             }
             Divider().overlay(theme.border)
+            if viewModel.hasPendingClipboardImage {
+                clipboardBanner
+                Divider().overlay(theme.border)
+            }
             footer
         }
         .frame(minWidth: 900, minHeight: 620)
@@ -200,7 +204,12 @@ struct EditorView: View {
                     set: { viewModel.selectTemplate(id: $0) }
                 )) {
                     ForEach(viewModel.templates) { template in
-                        Text(template.name).tag(template.id)
+                        Text(
+                            template.id == viewModel.defaultTemplateID
+                                ? "\(template.name) · 快捷默认"
+                                : template.name
+                        )
+                        .tag(template.id)
                     }
                 }
                 .labelsHidden()
@@ -211,9 +220,17 @@ struct EditorView: View {
 
                 HStack(spacing: 8) {
                     Circle()
-                        .fill(viewModel.isWatermarkEnabled ? theme.accent : theme.textSecondary)
+                        .fill(
+                            viewModel.sourceImage == nil
+                                ? theme.textSecondary
+                                : (viewModel.isWatermarkEnabled ? theme.accent : theme.textSecondary)
+                        )
                         .frame(width: 7, height: 7)
-                    Text(viewModel.isWatermarkEnabled ? "当前水印已显示" : "当前图片无水印")
+                    Text(
+                        viewModel.sourceImage == nil
+                            ? "载入图片后应用所选水印"
+                            : (viewModel.isWatermarkEnabled ? "当前水印已显示" : "当前图片无水印")
+                    )
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(theme.textSecondary)
                     Spacer()
@@ -293,6 +310,28 @@ struct EditorView: View {
                     labeledColorPicker("背景", keyPath: \.activeBackgroundColor)
                     labeledColorPicker("图标", keyPath: \.activeAccentColor)
                 }
+                Picker(
+                    "自动对比",
+                    selection: $viewModel.workingTemplate.activeContrastMode
+                ) {
+                    ForEach(WatermarkContrastMode.allCases, id: \.self) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                if viewModel.workingTemplate.activeContrastMode != .off {
+                    Picker(
+                        "对比强度",
+                        selection: $viewModel.workingTemplate.activeContrastStrength
+                    ) {
+                        ForEach(WatermarkContrastStrength.allCases, id: \.self) { strength in
+                            Text(strength.displayName).tag(strength)
+                        }
+                    }
+                    Text("按水印所在区域自动适配；手动颜色仍保留，关闭后恢复")
+                        .font(.system(size: 10))
+                        .foregroundStyle(theme.textSecondary)
+                }
                 valueSlider(
                     title: "透明度",
                     value: $viewModel.workingTemplate.activeOpacity,
@@ -324,8 +363,11 @@ struct EditorView: View {
                 HStack {
                     Button("复制当前模板") { viewModel.saveCurrentAsTemplate() }
                         .buttonStyle(outlineButtonStyle)
-                    Button("设为默认") { viewModel.setSelectedAsDefault() }
+                    Button(viewModel.isSelectedTemplateDefault ? "已是快捷默认" : "设为快捷默认") {
+                        viewModel.setSelectedAsDefault()
+                    }
                         .buttonStyle(outlineButtonStyle)
+                        .disabled(viewModel.isSelectedTemplateDefault)
                 }
                 Button("删除用户模板") { viewModel.deleteSelectedTemplate() }
                     .buttonStyle(outlineButtonStyle)
@@ -333,8 +375,30 @@ struct EditorView: View {
 
                 Divider()
                 sectionTitle("快捷操作")
+                Picker(
+                    "快捷默认模板",
+                    selection: Binding(
+                        get: { viewModel.defaultTemplateID },
+                        set: { viewModel.setDefaultTemplate(id: $0) }
+                    )
+                ) {
+                    ForEach(viewModel.templates) { template in
+                        Text(template.name).tag(template.id)
+                    }
+                }
+                Picker(
+                    "剪贴板图片",
+                    selection: Binding(
+                        get: { viewModel.clipboardAutoLoadMode },
+                        set: { viewModel.updateClipboardAutoLoadMode($0) }
+                    )
+                ) {
+                    ForEach(ClipboardAutoLoadMode.allCases, id: \.self) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
                 HStack(spacing: 8) {
-                    Text("默认模板快捷键")
+                    Text("快捷默认模板快捷键")
                         .font(.system(size: 11, weight: .medium))
                     Spacer()
                     HotKeyRecorderView(
@@ -397,7 +461,30 @@ struct EditorView: View {
         .background(theme.background)
     }
 
+    private var clipboardBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "doc.on.clipboard.fill")
+                .foregroundStyle(theme.accent)
+            Text("检测到新的剪贴板图片")
+                .font(.system(size: 11, weight: .semibold))
+            Text("当前画布不会被自动覆盖")
+                .font(.system(size: 11))
+                .foregroundStyle(theme.textSecondary)
+            Spacer()
+            Button("忽略") { viewModel.dismissPendingClipboardImage() }
+                .buttonStyle(outlineButtonStyle)
+            Button("载入并替换") { viewModel.loadPendingClipboardImage() }
+                .buttonStyle(PrimaryButtonStyle(accent: theme.accent, foreground: theme.onAccent))
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 8)
+        .background(theme.surface)
+    }
+
     private var footerHint: String {
+        if viewModel.sourceImage == nil {
+            return "等待载入图片"
+        }
         if !viewModel.isWatermarkEnabled {
             return "选择其他模板可直接替换"
         }
