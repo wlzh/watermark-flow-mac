@@ -110,12 +110,16 @@ enum SelfTest {
         editor.workingTemplate.opacity = 0.79
         editor.workingTemplate.relativeHeight = 0.12
         editor.workingTemplate.rotationDegrees = -16
+        editor.workingTemplate.contrastMode = .foreground
+        editor.workingTemplate.contrastStrength = .soft
         editor.workingTemplate.layoutMode = .tiled
         editor.workingTemplate.tileDensity = 8
         editor.workingTemplate.activeBackgroundColor = RGBAColor(hex: 0x7a3b21, alpha: 0.38)
         editor.workingTemplate.activeOpacity = 0.46
         editor.workingTemplate.activeRelativeHeight = 0.068
         editor.workingTemplate.activeRotationDegrees = 29
+        editor.workingTemplate.activeContrastMode = .foregroundAndBackground
+        editor.workingTemplate.activeContrastStrength = .strong
         RunLoop.current.run(until: Date().addingTimeInterval(0.4))
         let restoredEditor = EditorViewModel(repository: repository, defaults: isolatedDefaults)
         guard restoredEditor.workingTemplate.text == "@automatic",
@@ -127,6 +131,8 @@ enum SelfTest {
               restoredEditor.workingTemplate.activeOpacity == 0.46,
               restoredEditor.workingTemplate.activeRelativeHeight == 0.068,
               restoredEditor.workingTemplate.activeRotationDegrees == 29,
+              restoredEditor.workingTemplate.activeContrastMode == .foregroundAndBackground,
+              restoredEditor.workingTemplate.activeContrastStrength == .strong,
               restoredEditor.selectedTemplateID == editor.selectedTemplateID else {
             throw Failure("automatic editor persistence failed")
         }
@@ -135,6 +141,8 @@ enum SelfTest {
               restoredEditor.workingTemplate.activeOpacity == 0.79,
               restoredEditor.workingTemplate.activeRelativeHeight == 0.12,
               restoredEditor.workingTemplate.activeRotationDegrees == -16,
+              restoredEditor.workingTemplate.activeContrastMode == .foreground,
+              restoredEditor.workingTemplate.activeContrastStrength == .soft,
               restoredEditor.workingTemplate.position == NormalizedPoint(x: 0.31, y: 0.42) else {
             throw Failure("single visual profile was not restored")
         }
@@ -143,6 +151,8 @@ enum SelfTest {
               restoredEditor.workingTemplate.activeOpacity == 0.46,
               restoredEditor.workingTemplate.activeRelativeHeight == 0.068,
               restoredEditor.workingTemplate.activeRotationDegrees == 29,
+              restoredEditor.workingTemplate.activeContrastMode == .foregroundAndBackground,
+              restoredEditor.workingTemplate.activeContrastStrength == .strong,
               restoredEditor.workingTemplate.tileDensity == 8 else {
             throw Failure("tiled visual profile was not restored")
         }
@@ -230,6 +240,14 @@ enum SelfTest {
               hotKeyRestoredEditor.hotKeyConfiguration.displayName == "⇧⌘K" else {
             throw Failure("custom hotkey persistence failed")
         }
+        restoredEditor.setDefaultTemplate(id: DefaultTemplates.youtubeDuanKuID)
+        restoredEditor.selectTemplate(id: DefaultTemplates.xWLZHID)
+        let defaultRestoredEditor = EditorViewModel(repository: repository, defaults: isolatedDefaults)
+        guard defaultRestoredEditor.defaultTemplateID == DefaultTemplates.youtubeDuanKuID,
+              defaultRestoredEditor.defaultTemplateName == "YouTube · 短裤AI分享",
+              defaultRestoredEditor.selectedTemplateID == DefaultTemplates.xWLZHID else {
+            throw Failure("quick default template did not persist independently of editor selection")
+        }
         var recordedHotKey: HotKeyConfiguration?
         let recorderCoordinator = HotKeyRecorderView.Coordinator(
             onChange: { recordedHotKey = $0 },
@@ -265,7 +283,77 @@ enum SelfTest {
             throw Failure("pasteboard server round-trip failed")
         }
 
+        let clipboardRepository = TemplateRepository(
+            storageURL: temporary.deletingLastPathComponent().appendingPathComponent("clipboard-workflow.json")
+        )
+        let clipboardDefaultsName = "WatermarkFlow.ClipboardSelfTest.\(UUID().uuidString)"
+        guard let clipboardDefaults = UserDefaults(suiteName: clipboardDefaultsName) else {
+            throw Failure("unable to create clipboard workflow defaults")
+        }
+        defer { clipboardDefaults.removePersistentDomain(forName: clipboardDefaultsName) }
+        let clipboardEditor = EditorViewModel(repository: clipboardRepository, defaults: clipboardDefaults)
+        let clipboardPasteboard = NSPasteboard(
+            name: NSPasteboard.Name("WatermarkFlow.ClipboardMonitorSelfTest.\(UUID().uuidString)")
+        )
+        defer { clipboardPasteboard.releaseGlobally() }
+        _ = try ClipboardService.writeImage(source, to: clipboardPasteboard)
+        guard clipboardEditor.clipboardAutoLoadMode == .emptyCanvas,
+              clipboardEditor.observeClipboard(clipboardPasteboard) == .loaded,
+              clipboardEditor.sourceImage != nil else {
+            throw Failure("empty-canvas clipboard auto-load failed")
+        }
+        let replacement = try makeSourceImage(width: 640, height: 400)
+        _ = try ClipboardService.writeImage(replacement, to: clipboardPasteboard)
+        guard clipboardEditor.observeClipboard(clipboardPasteboard) == .pendingReplacement,
+              clipboardEditor.hasPendingClipboardImage,
+              clipboardEditor.sourcePixelDescription == "960 × 540 px" else {
+            throw Failure("safe clipboard replacement prompt failed")
+        }
+        clipboardEditor.loadPendingClipboardImage(clipboardPasteboard)
+        guard !clipboardEditor.hasPendingClipboardImage,
+              clipboardEditor.sourcePixelDescription == "640 × 400 px" else {
+            throw Failure("pending clipboard replacement action failed")
+        }
+        _ = try ClipboardService.writeImage(source, to: clipboardPasteboard)
+        guard clipboardEditor.observeClipboard(clipboardPasteboard) == .pendingReplacement else {
+            throw Failure("second safe clipboard replacement prompt failed")
+        }
+        clipboardEditor.dismissPendingClipboardImage()
+        clipboardEditor.updateClipboardAutoLoadMode(.alwaysReplace)
+        _ = try ClipboardService.writeImage(replacement, to: clipboardPasteboard)
+        guard clipboardEditor.observeClipboard(clipboardPasteboard) == .loaded,
+              clipboardEditor.sourcePixelDescription == "640 × 400 px" else {
+            throw Failure("always-replace clipboard mode failed")
+        }
+        clipboardEditor.generateAndCopy(to: clipboardPasteboard)
+        guard clipboardEditor.observeClipboard(clipboardPasteboard, forceCurrent: true) == .ignoredOwnOrLoadedImage else {
+            throw Failure("application clipboard write was not suppressed")
+        }
+        clipboardEditor.updateClipboardAutoLoadMode(.off)
+        _ = try ClipboardService.writeImage(source, to: clipboardPasteboard)
+        guard clipboardEditor.observeClipboard(clipboardPasteboard) == .disabled else {
+            throw Failure("disabled clipboard mode accepted an image")
+        }
+        clipboardEditor.updateClipboardAutoLoadMode(.emptyCanvas)
+        clipboardPasteboard.clearContents()
+        clipboardPasteboard.setString("not an image", forType: .string)
+        guard clipboardEditor.observeClipboard(clipboardPasteboard) == .ignoredNonImage else {
+            throw Failure("non-image clipboard content was not ignored")
+        }
+        clipboardEditor.updateClipboardAutoLoadMode(.off)
+        let clipboardRestoredEditor = EditorViewModel(
+            repository: clipboardRepository,
+            defaults: clipboardDefaults
+        )
+        guard clipboardRestoredEditor.clipboardAutoLoadMode == .off else {
+            throw Failure("clipboard mode did not persist")
+        }
+
         let appDelegate = AppDelegate(viewModel: restoredEditor)
+        guard appDelegate.defaultQuickMenuTitle.contains("YouTube · 短裤AI分享"),
+              appDelegate.defaultQuickMenuTitle.contains(customHotKey.displayName) else {
+            throw Failure("default quick menu title is missing template name or shortcut")
+        }
         let emptyExportItem = NSMenuItem(
             title: "Export",
             action: #selector(AppDelegate.exportImage),
@@ -307,14 +395,19 @@ enum SelfTest {
         print("SELF_TEST_POSITION_RESTORE=PASS value=0.31,0.42")
         print("SELF_TEST_TILED_LAYOUT=PASS density=8")
         print("SELF_TEST_DUAL_LAYOUT_SETTINGS=PASS")
+        print("SELF_TEST_DUAL_LAYOUT_CONTRAST=PASS")
+        print("SELF_TEST_ADAPTIVE_CONTRAST=PASS")
         print("SELF_TEST_TEMPLATE_QUICK_RENDER=PASS")
         print("SELF_TEST_REMOVE_RESTORE_WATERMARK=PASS")
         print("SELF_TEST_TEMPLATE_REPLACEMENT=PASS")
         print("SELF_TEST_CANVAS_ZOOM=PASS range=25%-1000%")
         print("SELF_TEST_CLEAR_CANVAS=PASS templatesPreserved=4")
         print("SELF_TEST_CUSTOM_HOTKEY=PASS value=\(customHotKey.displayName)")
+        print("SELF_TEST_DEFAULT_TEMPLATE=PASS value=\(defaultRestoredEditor.defaultTemplateName)")
         print("SELF_TEST_HOTKEY_RECORDER=PASS")
         print("SELF_TEST_PASTEBOARD_SERVER=PASS changeCount=\(changeCount)")
+        print("SELF_TEST_CLIPBOARD_AUTOLOAD=PASS modes=empty,pending,always,off,non-image")
+        print("SELF_TEST_CLIPBOARD_SELF_WRITE_SUPPRESSION=PASS")
         print("SELF_TEST_EMPTY_MENU_VALIDATION=PASS")
         print("SELF_TEST_QUICK_TEMPLATE_MENU=PASS items=\(quickMenu.items.count)")
     }

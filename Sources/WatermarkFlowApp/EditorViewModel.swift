@@ -20,16 +20,24 @@ final class EditorViewModel: ObservableObject {
             scheduleAutomaticPersistence()
         }
     }
-    @Published var statusMessage = "复制图片后载入，或把图片拖到左侧"
+    @Published var statusMessage = "复制图片可自动载入，也可把图片拖到左侧"
     @Published private(set) var hotKeyConfiguration: HotKeyConfiguration
+    @Published private(set) var defaultTemplateID: UUID
+    @Published private(set) var clipboardAutoLoadMode: ClipboardAutoLoadMode
+    @Published private(set) var hasPendingClipboardImage = false
 
     private let repository: TemplateRepository
     private let defaults: UserDefaults
     private let defaultTemplateKey = "defaultTemplateID"
+    private let clipboardAutoLoadModeKey = "clipboardAutoLoadMode"
     private var dragStartPosition: NormalizedPoint?
     private var persistenceTask: Task<Void, Never>?
     private var persistenceEnabled = false
+    private var lastObservedPasteboardRevision: PasteboardRevision?
+    private var lastLoadedPasteboardRevision: PasteboardRevision?
+    private var lastWrittenPasteboardRevision: PasteboardRevision?
     var hotKeyRegistrationHandler: ((HotKeyConfiguration) -> Bool)?
+    var clipboardModeChangeHandler: (() -> Void)?
 
     init(
         repository: TemplateRepository = TemplateRepository(),
@@ -38,11 +46,17 @@ final class EditorViewModel: ObservableObject {
         self.repository = repository
         self.defaults = defaults
         hotKeyConfiguration = HotKeyConfiguration.load(from: defaults)
+        clipboardAutoLoadMode = defaults.string(forKey: clipboardAutoLoadModeKey)
+            .flatMap(ClipboardAutoLoadMode.init(rawValue:)) ?? .emptyCanvas
 
         let library = (try? repository.loadLibrary())
             ?? TemplateLibraryState(templates: DefaultTemplates.all)
         let loadedTemplates = library.templates
         templates = loadedTemplates
+        let savedDefaultID = defaults.string(forKey: defaultTemplateKey).flatMap(UUID.init(uuidString:))
+        defaultTemplateID = loadedTemplates.contains { $0.id == savedDefaultID }
+            ? savedDefaultID!
+            : DefaultTemplates.xWLZHID
 
         let savedID = library.lastSelectedTemplateID
             ?? defaults.string(forKey: defaultTemplateKey).flatMap(UUID.init(uuidString:))
@@ -56,9 +70,12 @@ final class EditorViewModel: ObservableObject {
         templates.first { $0.id == selectedTemplateID }?.isBuiltIn == false
     }
 
-    var defaultTemplateID: UUID {
-        let saved = defaults.string(forKey: defaultTemplateKey).flatMap(UUID.init(uuidString:))
-        return templates.contains { $0.id == saved } ? saved! : DefaultTemplates.xWLZHID
+    var defaultTemplateName: String {
+        templates.first { $0.id == defaultTemplateID }?.name ?? "X · @wlzh"
+    }
+
+    var isSelectedTemplateDefault: Bool {
+        selectedTemplateID == defaultTemplateID
     }
 
     var sourcePixelDescription: String {
@@ -145,13 +162,68 @@ final class EditorViewModel: ObservableObject {
             : "画布缩放：\(canvasZoomDescription)"
     }
 
-    func loadFromClipboard() {
+    @discardableResult
+    func loadFromClipboard(_ pasteboard: NSPasteboard = .general, automatically: Bool = false) -> Bool {
         do {
-            try loadImage(ClipboardService.readImage())
-            statusMessage = "已从剪贴板载入图片"
+            try loadImage(ClipboardService.readImage(from: pasteboard))
+            let revision = PasteboardRevision(pasteboard)
+            lastObservedPasteboardRevision = revision
+            lastLoadedPasteboardRevision = revision
+            hasPendingClipboardImage = false
+            statusMessage = automatically ? "已自动载入剪贴板图片" : "已从剪贴板载入图片"
+            return true
         } catch {
             statusMessage = error.localizedDescription
+            return false
         }
+    }
+
+    @discardableResult
+    func observeClipboard(
+        _ pasteboard: NSPasteboard = .general,
+        forceCurrent: Bool = false
+    ) -> ClipboardObservationResult {
+        let revision = PasteboardRevision(pasteboard)
+        if !forceCurrent, revision == lastObservedPasteboardRevision { return .unchanged }
+        lastObservedPasteboardRevision = revision
+        if revision == lastWrittenPasteboardRevision || revision == lastLoadedPasteboardRevision {
+            return .ignoredOwnOrLoadedImage
+        }
+        guard pasteboard.canReadObject(forClasses: [NSImage.self]) else {
+            hasPendingClipboardImage = false
+            return .ignoredNonImage
+        }
+        switch clipboardAutoLoadMode {
+        case .off:
+            hasPendingClipboardImage = false
+            return .disabled
+        case .emptyCanvas where sourceImage != nil:
+            hasPendingClipboardImage = true
+            statusMessage = "检测到新的剪贴板图片，可选择替换当前图片"
+            return .pendingReplacement
+        case .emptyCanvas, .alwaysReplace:
+            return loadFromClipboard(pasteboard, automatically: true) ? .loaded : .ignoredNonImage
+        }
+    }
+
+    func loadPendingClipboardImage(_ pasteboard: NSPasteboard = .general) {
+        _ = loadFromClipboard(pasteboard)
+    }
+
+    func dismissPendingClipboardImage() {
+        hasPendingClipboardImage = false
+        statusMessage = "已忽略本次剪贴板图片"
+    }
+
+    func updateClipboardAutoLoadMode(_ mode: ClipboardAutoLoadMode) {
+        guard mode != clipboardAutoLoadMode else { return }
+        clipboardAutoLoadMode = mode
+        defaults.set(mode.rawValue, forKey: clipboardAutoLoadModeKey)
+        if mode == .off {
+            hasPendingClipboardImage = false
+        }
+        statusMessage = "剪贴板自动载入：\(mode.displayName)"
+        clipboardModeChangeHandler?()
     }
 
     func openImage() {
@@ -209,10 +281,11 @@ final class EditorViewModel: ObservableObject {
         }
     }
 
-    func generateAndCopy() {
+    func generateAndCopy(to pasteboard: NSPasteboard = .general) {
         do {
             let output = try renderCurrentOutput()
-            try ClipboardService.writeImage(output)
+            let changeCount = try ClipboardService.writeImage(output, to: pasteboard)
+            recordClipboardWrite(pasteboard, changeCount: changeCount)
             statusMessage = isWatermarkEnabled
                 ? "已生成并复制，可直接粘贴 · \(sourcePixelDescription)"
                 : "已复制无水印原图 · \(sourcePixelDescription)"
@@ -222,15 +295,19 @@ final class EditorViewModel: ObservableObject {
         }
     }
 
-    func quickApplyDefaultToClipboard() throws -> NSImage {
-        try quickApplyTemplateToClipboard(id: defaultTemplateID)
+    func quickApplyDefaultToClipboard(_ pasteboard: NSPasteboard = .general) throws -> NSImage {
+        try quickApplyTemplateToClipboard(id: defaultTemplateID, pasteboard: pasteboard)
     }
 
-    func quickApplyTemplateToClipboard(id: UUID) throws -> NSImage {
+    func quickApplyTemplateToClipboard(
+        id: UUID,
+        pasteboard: NSPasteboard = .general
+    ) throws -> NSImage {
         flushPersistence()
-        let source = try ClipboardService.readImage()
+        let source = try ClipboardService.readImage(from: pasteboard)
         let output = try renderForQuickApply(source: source, templateID: id)
-        try ClipboardService.writeImage(output)
+        let changeCount = try ClipboardService.writeImage(output, to: pasteboard)
+        recordClipboardWrite(pasteboard, changeCount: changeCount)
         let templateName = templates.first(where: { $0.id == id })?.name ?? "所选模板"
         statusMessage = "已用“\(templateName)”快速生成并复制"
         return output
@@ -337,9 +414,16 @@ final class EditorViewModel: ObservableObject {
     }
 
     func setSelectedAsDefault() {
+        setDefaultTemplate(id: selectedTemplateID)
+    }
+
+    func setDefaultTemplate(id: UUID) {
+        guard let template = templates.first(where: { $0.id == id }) else { return }
+        guard id != defaultTemplateID else { return }
         flushPersistence()
-        defaults.set(selectedTemplateID.uuidString, forKey: defaultTemplateKey)
-        statusMessage = "已设为快捷处理默认模板：\(workingTemplate.name)"
+        defaultTemplateID = id
+        defaults.set(id.uuidString, forKey: defaultTemplateKey)
+        statusMessage = "已设为快捷默认模板：\(template.name)"
     }
 
     func deleteSelectedTemplate() {
@@ -358,6 +442,7 @@ final class EditorViewModel: ObservableObject {
         workingTemplate = fallback
         persistenceEnabled = true
         if wasDefault {
+            defaultTemplateID = fallback.id
             defaults.set(fallback.id.uuidString, forKey: defaultTemplateKey)
         }
         persistLibrary()
@@ -450,6 +535,13 @@ final class EditorViewModel: ObservableObject {
         refreshPreview()
     }
 
+    private func recordClipboardWrite(_ pasteboard: NSPasteboard, changeCount: Int) {
+        let revision = PasteboardRevision(name: pasteboard.name, changeCount: changeCount)
+        lastWrittenPasteboardRevision = revision
+        lastObservedPasteboardRevision = revision
+        hasPendingClipboardImage = false
+    }
+
     private func refreshPreview() {
         guard let sourceImage else {
             previewImage = nil
@@ -535,6 +627,30 @@ final class EditorViewModel: ObservableObject {
     }
 
     private static let canvasZoomLevels = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4, 5, 7.5, 10]
+}
+
+enum ClipboardObservationResult: Equatable {
+    case unchanged
+    case disabled
+    case ignoredNonImage
+    case ignoredOwnOrLoadedImage
+    case pendingReplacement
+    case loaded
+}
+
+private struct PasteboardRevision: Equatable {
+    let name: NSPasteboard.Name
+    let changeCount: Int
+
+    init(_ pasteboard: NSPasteboard) {
+        name = pasteboard.name
+        changeCount = pasteboard.changeCount
+    }
+
+    init(name: NSPasteboard.Name, changeCount: Int) {
+        self.name = name
+        self.changeCount = changeCount
+    }
 }
 
 private enum QuickApplyError: LocalizedError {
