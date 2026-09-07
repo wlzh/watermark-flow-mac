@@ -39,11 +39,15 @@ enum SelfTest {
         editor.workingTemplate.text = "@automatic"
         editor.workingTemplate.position = NormalizedPoint(x: 0.31, y: 0.42)
         editor.workingTemplate.backgroundColor = RGBAColor(hex: 0x245f73, alpha: 0.67)
+        editor.workingTemplate.layoutMode = .tiled
+        editor.workingTemplate.tileDensity = 8
         RunLoop.current.run(until: Date().addingTimeInterval(0.4))
         let restoredEditor = EditorViewModel(repository: repository, defaults: isolatedDefaults)
         guard restoredEditor.workingTemplate.text == "@automatic",
               restoredEditor.workingTemplate.position == NormalizedPoint(x: 0.31, y: 0.42),
               restoredEditor.workingTemplate.backgroundColor == RGBAColor(hex: 0x245f73, alpha: 0.67),
+              restoredEditor.workingTemplate.layoutMode == .tiled,
+              restoredEditor.workingTemplate.tileDensity == 8,
               restoredEditor.selectedTemplateID == editor.selectedTemplateID else {
             throw Failure("automatic editor persistence failed")
         }
@@ -54,6 +58,14 @@ enum SelfTest {
               restoredEditor.previewImage != nil,
               restoredEditor.isWatermarkEnabled else {
             throw Failure("editor image load failed")
+        }
+        let positionBeforeIgnoredDrag = restoredEditor.workingTemplate.position
+        restoredEditor.updateWatermarkDrag(
+            translation: CGSize(width: 200, height: 100),
+            canvasSize: CGSize(width: 960, height: 540)
+        )
+        guard restoredEditor.workingTemplate.position == positionBeforeIgnoredDrag else {
+            throw Failure("tiled layout unexpectedly changed single-watermark position")
         }
         restoredEditor.zoomIn()
         guard restoredEditor.canvasZoom == 1.25,
@@ -195,6 +207,7 @@ enum SelfTest {
         print("SELF_TEST_PERSISTENCE=PASS")
         print("SELF_TEST_AUTOSAVE_RESTART=PASS")
         print("SELF_TEST_POSITION_RESTORE=PASS value=0.31,0.42")
+        print("SELF_TEST_TILED_LAYOUT=PASS density=8")
         print("SELF_TEST_TEMPLATE_QUICK_RENDER=PASS")
         print("SELF_TEST_REMOVE_RESTORE_WATERMARK=PASS")
         print("SELF_TEST_TEMPLATE_REPLACEMENT=PASS")

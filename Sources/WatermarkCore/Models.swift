@@ -82,6 +82,18 @@ public enum WatermarkBrand: String, Codable, CaseIterable, Sendable {
     }
 }
 
+public enum WatermarkLayoutMode: String, Codable, CaseIterable, Sendable {
+    case single
+    case tiled
+
+    public var displayName: String {
+        switch self {
+        case .single: return "单个"
+        case .tiled: return "满屏"
+        }
+    }
+}
+
 public struct WatermarkTemplate: Codable, Equatable, Identifiable, Sendable {
     public var id: UUID
     public var name: String
@@ -94,6 +106,8 @@ public struct WatermarkTemplate: Codable, Equatable, Identifiable, Sendable {
     public var relativeHeight: Double
     public var position: NormalizedPoint
     public var rotationDegrees: Double
+    public var layoutMode: WatermarkLayoutMode
+    public var tileDensity: Double
     public var customLogoPNG: Data?
     public var isBuiltIn: Bool
 
@@ -109,6 +123,8 @@ public struct WatermarkTemplate: Codable, Equatable, Identifiable, Sendable {
         relativeHeight: Double = 0.09,
         position: NormalizedPoint = NormalizedPoint(x: 0.82, y: 0.9),
         rotationDegrees: Double = 0,
+        layoutMode: WatermarkLayoutMode = .single,
+        tileDensity: Double = 5,
         customLogoPNG: Data? = nil,
         isBuiltIn: Bool = false
     ) {
@@ -123,6 +139,8 @@ public struct WatermarkTemplate: Codable, Equatable, Identifiable, Sendable {
         self.relativeHeight = relativeHeight
         self.position = position
         self.rotationDegrees = rotationDegrees
+        self.layoutMode = layoutMode
+        self.tileDensity = tileDensity
         self.customLogoPNG = customLogoPNG
         self.isBuiltIn = isBuiltIn
     }
@@ -136,7 +154,45 @@ public struct WatermarkTemplate: Codable, Equatable, Identifiable, Sendable {
         copy.relativeHeight = relativeHeight.clamped(to: 0.035...0.3)
         copy.position = position.clamped()
         copy.rotationDegrees = rotationDegrees.clamped(to: -180...180)
+        copy.tileDensity = tileDensity.clamped(to: 1...10)
         return copy
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case brand
+        case text
+        case foregroundColor
+        case backgroundColor
+        case accentColor
+        case opacity
+        case relativeHeight
+        case position
+        case rotationDegrees
+        case layoutMode
+        case tileDensity
+        case customLogoPNG
+        case isBuiltIn
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        brand = try container.decode(WatermarkBrand.self, forKey: .brand)
+        text = try container.decode(String.self, forKey: .text)
+        foregroundColor = try container.decode(RGBAColor.self, forKey: .foregroundColor)
+        backgroundColor = try container.decode(RGBAColor.self, forKey: .backgroundColor)
+        accentColor = try container.decode(RGBAColor.self, forKey: .accentColor)
+        opacity = try container.decode(Double.self, forKey: .opacity)
+        relativeHeight = try container.decode(Double.self, forKey: .relativeHeight)
+        position = try container.decode(NormalizedPoint.self, forKey: .position)
+        rotationDegrees = try container.decode(Double.self, forKey: .rotationDegrees)
+        layoutMode = try container.decodeIfPresent(WatermarkLayoutMode.self, forKey: .layoutMode) ?? .single
+        tileDensity = try container.decodeIfPresent(Double.self, forKey: .tileDensity) ?? 5
+        customLogoPNG = try container.decodeIfPresent(Data.self, forKey: .customLogoPNG)
+        isBuiltIn = try container.decode(Bool.self, forKey: .isBuiltIn)
     }
 }
 

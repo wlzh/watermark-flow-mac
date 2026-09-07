@@ -208,6 +208,28 @@ public enum WatermarkRenderer {
         canvasSize: CGSize,
         template: WatermarkTemplate
     ) {
+        let layout = makeBadgeLayout(canvasSize: canvasSize, template: template)
+        if template.layoutMode == .tiled {
+            drawTiledWatermark(
+                in: context,
+                canvasSize: canvasSize,
+                template: template,
+                layout: layout
+            )
+            return
+        }
+
+        let center = CGPoint(
+            x: CGFloat(template.position.x) * canvasSize.width,
+            y: (1 - CGFloat(template.position.y)) * canvasSize.height
+        )
+        drawBadge(in: context, center: center, template: template, layout: layout)
+    }
+
+    private static func makeBadgeLayout(
+        canvasSize: CGSize,
+        template: WatermarkTemplate
+    ) -> BadgeLayout {
         let badgeHeight = max(24, canvasSize.height * template.relativeHeight)
         let fontSize = badgeHeight * 0.4
         let font = NSFont(name: "Avenir Next Demi Bold", size: fontSize)
@@ -225,11 +247,60 @@ public enum WatermarkRenderer {
         let gap = showsIcon && !template.text.isEmpty ? badgeHeight * 0.16 : 0
         let badgeWidth = max(badgeHeight, padding * 2 + iconWidth + gap + textWidth)
 
-        let centerX = CGFloat(template.position.x) * canvasSize.width
-        let centerY = (1 - CGFloat(template.position.y)) * canvasSize.height
+        return BadgeLayout(
+            badgeHeight: badgeHeight,
+            fontSize: fontSize,
+            line: line,
+            padding: padding,
+            iconSize: iconSize,
+            showsIcon: showsIcon,
+            gap: gap,
+            badgeWidth: badgeWidth,
+            customLogo: decodedCustomLogo(from: template)
+        )
+    }
+
+    private static func drawTiledWatermark(
+        in context: CGContext,
+        canvasSize: CGSize,
+        template: WatermarkTemplate,
+        layout: BadgeLayout
+    ) {
+        let normalizedDensity = CGFloat((template.tileDensity - 1) / 9)
+        let spacingMultiplier = 2.9 - normalizedDensity * 1.5
+        let horizontalStep = max(layout.badgeWidth * spacingMultiplier, layout.badgeHeight * 1.8)
+        let verticalStep = max(layout.badgeHeight * spacingMultiplier * 1.15, layout.badgeHeight * 1.55)
+
+        var row = 0
+        var centerY = -verticalStep
+        while centerY <= canvasSize.height + verticalStep {
+            let stagger = row.isMultiple(of: 2) ? 0 : horizontalStep / 2
+            var centerX = -horizontalStep + stagger
+            while centerX <= canvasSize.width + horizontalStep {
+                drawBadge(
+                    in: context,
+                    center: CGPoint(x: centerX, y: centerY),
+                    template: template,
+                    layout: layout
+                )
+                centerX += horizontalStep
+            }
+            row += 1
+            centerY += verticalStep
+        }
+    }
+
+    private static func drawBadge(
+        in context: CGContext,
+        center: CGPoint,
+        template: WatermarkTemplate,
+        layout: BadgeLayout
+    ) {
+        let badgeHeight = layout.badgeHeight
+        let badgeWidth = layout.badgeWidth
 
         context.saveGState()
-        context.translateBy(x: centerX, y: centerY)
+        context.translateBy(x: center.x, y: center.y)
         context.rotate(by: -CGFloat(template.rotationDegrees) * .pi / 180)
         context.setAlpha(CGFloat(template.opacity))
 
@@ -257,31 +328,56 @@ public enum WatermarkRenderer {
         context.fillPath()
         context.restoreGState()
 
-        var cursorX = badgeRect.minX + padding
-        if showsIcon {
+        var cursorX = badgeRect.minX + layout.padding
+        if layout.showsIcon {
             let iconRect = CGRect(
                 x: cursorX,
-                y: -iconSize / 2,
-                width: iconSize,
-                height: iconSize
+                y: -layout.iconSize / 2,
+                width: layout.iconSize,
+                height: layout.iconSize
             )
-            drawIcon(in: context, rect: iconRect, template: template)
-            cursorX += iconSize + gap
+            drawIcon(
+                in: context,
+                rect: iconRect,
+                template: template,
+                customLogo: layout.customLogo
+            )
+            cursorX += layout.iconSize + layout.gap
         }
 
         if !template.text.isEmpty {
             context.textMatrix = .identity
-            context.textPosition = CGPoint(x: cursorX, y: -fontSize * 0.36)
-            CTLineDraw(line, context)
+            context.textPosition = CGPoint(x: cursorX, y: -layout.fontSize * 0.36)
+            CTLineDraw(layout.line, context)
         }
 
         context.restoreGState()
     }
 
+    private struct BadgeLayout {
+        let badgeHeight: CGFloat
+        let fontSize: CGFloat
+        let line: CTLine
+        let padding: CGFloat
+        let iconSize: CGFloat
+        let showsIcon: Bool
+        let gap: CGFloat
+        let badgeWidth: CGFloat
+        let customLogo: CGImage?
+    }
+
+    private static func decodedCustomLogo(from template: WatermarkTemplate) -> CGImage? {
+        guard template.brand == .custom,
+              let data = template.customLogoPNG,
+              let representation = NSBitmapImageRep(data: data) else { return nil }
+        return representation.cgImage
+    }
+
     private static func drawIcon(
         in context: CGContext,
         rect: CGRect,
-        template: WatermarkTemplate
+        template: WatermarkTemplate,
+        customLogo: CGImage?
     ) {
         switch template.brand {
         case .x:
@@ -323,14 +419,15 @@ public enum WatermarkRenderer {
             context.fillPath()
 
         case .custom:
-            guard let data = template.customLogoPNG,
-                  let representation = NSBitmapImageRep(data: data),
-                  let image = representation.cgImage else {
+            guard let customLogo else {
                 drawCustomPlaceholder(in: context, rect: rect, color: template.accentColor.nsColor)
                 return
             }
-            let fitted = aspectFit(size: CGSize(width: image.width, height: image.height), in: rect)
-            context.draw(image, in: fitted)
+            let fitted = aspectFit(
+                size: CGSize(width: customLogo.width, height: customLogo.height),
+                in: rect
+            )
+            context.draw(customLogo, in: fitted)
 
         case .text:
             break
