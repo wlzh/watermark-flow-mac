@@ -11,4 +11,4 @@
 - [x] 补齐核心测试与隔离 pasteboard 应用自检。
 - [x] 全面审计既有功能、文案、默认值、持久化和性能。
 - [x] 同步版本、README、安装说明、PRD、设计、开发记录和发布说明。
-- [ ] 完成最终 Universal 构建、本机安装、界面复验和 GitHub Release。
+- [x] 完成最终 Universal 构建、本机安装、界面复验和 GitHub Release。
