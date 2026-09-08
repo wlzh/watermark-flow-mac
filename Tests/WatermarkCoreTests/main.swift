@@ -210,6 +210,31 @@ runner.test("drag delta keeps clicks stable and moves relatively") {
     )
 }
 
+runner.test("single watermark bounds match rendered placement and rotation") {
+    var template = DefaultTemplates.all[0]
+    template.position = NormalizedPoint(x: 0.8, y: 0.9)
+    template.relativeHeight = 0.1
+    template.rotationDegrees = 0
+    let canvas = CGSize(width: 1_000, height: 500)
+    let bounds = WatermarkRenderer.singleWatermarkBounds(canvasSize: canvas, template: template)
+    try expect(bounds != nil, "single watermark bounds were missing")
+    try expect(abs(bounds!.midX - 800) < 0.001, "watermark bounds x position was incorrect")
+    try expect(abs(bounds!.midY - 450) < 0.001, "watermark bounds y position was incorrect")
+    try expect(abs(bounds!.height - 50) < 0.001, "watermark bounds height was incorrect")
+
+    template.rotationDegrees = 90
+    let rotated = WatermarkRenderer.singleWatermarkBounds(canvasSize: canvas, template: template)
+    try expect(rotated != nil, "rotated watermark bounds were missing")
+    try expect(abs(rotated!.width - 50) < 0.001, "rotated watermark width was incorrect")
+    try expect(abs(rotated!.height - bounds!.width) < 0.001, "rotated watermark height was incorrect")
+
+    template.layoutMode = .tiled
+    try expect(
+        WatermarkRenderer.singleWatermarkBounds(canvasSize: canvas, template: template) == nil,
+        "tiled watermark unexpectedly returned a single hit region"
+    )
+}
+
 runner.test("user templates persist as JSON") {
     let root = FileManager.default.temporaryDirectory
         .appendingPathComponent("WatermarkCoreTests-\(UUID().uuidString)", isDirectory: true)

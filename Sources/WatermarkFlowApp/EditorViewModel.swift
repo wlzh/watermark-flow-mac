@@ -145,6 +145,15 @@ final class EditorViewModel: ObservableObject {
         statusMessage = "画布缩放：\(canvasZoomDescription)"
     }
 
+    func zoomWithMouseWheel(_ direction: MouseWheelZoomDirection) {
+        switch direction {
+        case .zoomIn:
+            zoomIn()
+        case .zoomOut:
+            zoomOut()
+        }
+    }
+
     func resetCanvasZoom() {
         guard sourceImage != nil else { return }
         canvasZoom = 1

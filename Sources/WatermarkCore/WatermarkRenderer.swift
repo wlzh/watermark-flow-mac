@@ -202,6 +202,32 @@ public enum WatermarkRenderer {
         return CGSize(width: image.width, height: image.height)
     }
 
+    public static func singleWatermarkBounds(
+        canvasSize: CGSize,
+        template: WatermarkTemplate
+    ) -> CGRect? {
+        guard template.layoutMode == .single,
+              canvasSize.width > 0,
+              canvasSize.height > 0 else { return nil }
+
+        let layout = makeBadgeLayout(canvasSize: canvasSize, template: template)
+        let radians = abs(CGFloat(template.activeRotationDegrees) * .pi / 180)
+        let width = abs(cos(radians)) * layout.badgeWidth
+            + abs(sin(radians)) * layout.badgeHeight
+        let height = abs(sin(radians)) * layout.badgeWidth
+            + abs(cos(radians)) * layout.badgeHeight
+        let center = CGPoint(
+            x: CGFloat(template.position.x) * canvasSize.width,
+            y: CGFloat(template.position.y) * canvasSize.height
+        )
+        return CGRect(
+            x: center.x - width / 2,
+            y: center.y - height / 2,
+            width: width,
+            height: height
+        )
+    }
+
     private static func pixelCGImage(from image: NSImage) -> CGImage? {
         var rect = NSRect(origin: .zero, size: image.size)
         return image.cgImage(forProposedRect: &rect, context: nil, hints: nil)
