@@ -189,10 +189,92 @@ enum SelfTest {
         guard restoredEditor.canvasZoom == 1 else {
             throw Failure("canvas fit reset failed")
         }
+        guard MouseWheelZoomDirection.resolve(
+            horizontalDelta: 0,
+            verticalDelta: 1,
+            hasPreciseScrollingDeltas: false
+        ) == .zoomIn,
+        MouseWheelZoomDirection.resolve(
+            horizontalDelta: 0,
+            verticalDelta: -1,
+            hasPreciseScrollingDeltas: false
+        ) == .zoomOut,
+        MouseWheelZoomDirection.resolve(
+            horizontalDelta: 0,
+            verticalDelta: 1,
+            hasPreciseScrollingDeltas: true
+        ) == nil,
+        MouseWheelZoomDirection.resolve(
+            horizontalDelta: 2,
+            verticalDelta: 1,
+            hasPreciseScrollingDeltas: false
+        ) == nil,
+        MouseWheelZoomDirection.resolve(
+            horizontalDelta: 0,
+            verticalDelta: 0,
+            hasPreciseScrollingDeltas: false
+        ) == nil else {
+            throw Failure("mouse-wheel zoom event classification failed")
+        }
+        let dragConfiguration = CanvasDragConfiguration(
+            imageRect: CGRect(x: 20, y: 30, width: 600, height: 400),
+            watermarkRect: CGRect(x: 450, y: 330, width: 120, height: 50),
+            canDragWatermark: true,
+            canPan: true
+        )
+        guard CanvasDragTarget.resolve(
+            location: CGPoint(x: 500, y: 350),
+            configuration: dragConfiguration
+        ) == .watermark,
+        CanvasDragTarget.resolve(
+            location: CGPoint(x: 100, y: 100),
+            configuration: dragConfiguration
+        ) == .canvas,
+        CanvasDragTarget.resolve(
+            location: CGPoint(x: 10, y: 10),
+            configuration: dragConfiguration
+        ) == nil,
+        CanvasDragTarget.resolve(
+            location: CGPoint(x: 500, y: 350),
+            configuration: CanvasDragConfiguration(
+                imageRect: dragConfiguration.imageRect,
+                watermarkRect: dragConfiguration.watermarkRect,
+                canDragWatermark: false,
+                canPan: true
+            )
+        ) == .canvas,
+        CanvasDragTarget.resolve(
+            location: CGPoint(x: 100, y: 100),
+            configuration: CanvasDragConfiguration(
+                imageRect: dragConfiguration.imageRect,
+                watermarkRect: dragConfiguration.watermarkRect,
+                canDragWatermark: true,
+                canPan: false
+            )
+        ) == nil else {
+            throw Failure("canvas drag target classification failed")
+        }
+        restoredEditor.zoomWithMouseWheel(.zoomIn)
+        guard restoredEditor.canvasZoom == 1.25 else {
+            throw Failure("mouse-wheel zoom-in routing failed")
+        }
+        restoredEditor.zoomWithMouseWheel(.zoomOut)
+        guard restoredEditor.canvasZoom == 1 else {
+            throw Failure("mouse-wheel zoom-out routing failed")
+        }
         restoredEditor.setCanvasZoom(10)
         guard restoredEditor.canvasZoom == 10,
               restoredEditor.canvasZoomDescription == "1000%" else {
             throw Failure("canvas maximum zoom failed")
+        }
+        restoredEditor.zoomWithMouseWheel(.zoomIn)
+        guard restoredEditor.canvasZoom == 10 else {
+            throw Failure("mouse-wheel maximum zoom boundary failed")
+        }
+        restoredEditor.setCanvasZoom(0.25)
+        restoredEditor.zoomWithMouseWheel(.zoomOut)
+        guard restoredEditor.canvasZoom == 0.25 else {
+            throw Failure("mouse-wheel minimum zoom boundary failed")
         }
         restoredEditor.resetCanvasZoom()
         let watermarkedOutput = try restoredEditor.renderCurrentOutput()
@@ -223,8 +305,10 @@ enum SelfTest {
             throw Failure("template-specific quick render failed")
         }
         restoredEditor.clearCanvas()
+        restoredEditor.zoomWithMouseWheel(.zoomIn)
         guard restoredEditor.sourceImage == nil,
               restoredEditor.previewImage == nil,
+              restoredEditor.canvasZoom == 1,
               restoredEditor.templates.count == 4 else {
             throw Failure("clear canvas removed saved templates or retained image state")
         }
@@ -401,6 +485,8 @@ enum SelfTest {
         print("SELF_TEST_REMOVE_RESTORE_WATERMARK=PASS")
         print("SELF_TEST_TEMPLATE_REPLACEMENT=PASS")
         print("SELF_TEST_CANVAS_ZOOM=PASS range=25%-1000%")
+        print("SELF_TEST_MOUSE_WHEEL_ZOOM=PASS mouse=zoom trackpad=pan")
+        print("SELF_TEST_CANVAS_DRAG=PASS canvas=pan watermark=move")
         print("SELF_TEST_CLEAR_CANVAS=PASS templatesPreserved=4")
         print("SELF_TEST_CUSTOM_HOTKEY=PASS value=\(customHotKey.displayName)")
         print("SELF_TEST_DEFAULT_TEMPLATE=PASS value=\(defaultRestoredEditor.defaultTemplateName)")

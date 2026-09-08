@@ -11,7 +11,7 @@ cd /Users/m/document/QNSZ/project/watermark-flow-mac
 
 ## 从 GitHub Release 安装
 
-1. 从 [Releases](https://github.com/wlzh/watermark-flow-mac/releases) 下载当前版本的 `WatermarkFlow-v0.4.0-macos-universal.zip` 和 `SHA256.txt`。
+1. 从 [Releases](https://github.com/wlzh/watermark-flow-mac/releases) 下载当前版本的 `WatermarkFlow-v0.4.1-macos-universal.zip` 和 `SHA256.txt`。
 2. 解压后把 `WatermarkFlow.app` 移到“应用程序”。
 3. 当前版本尚未进行 Apple notarization。首次启动如果被 Gatekeeper 拦截，在 Finder 中按住 Control 点击应用并选择“打开”。
 4. 高级用户可先用 `shasum -a 256` 对照 `SHA256.txt` 验证下载完整性。

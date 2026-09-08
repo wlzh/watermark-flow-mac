@@ -73,6 +73,24 @@ struct EditorView: View {
                         width: max(geometry.size.width, zoomed.width + 44),
                         height: max(geometry.size.height, zoomed.height + 44)
                     )
+                    let imageRect = CGRect(
+                        x: (content.width - zoomed.width) / 2,
+                        y: (content.height - zoomed.height) / 2,
+                        width: zoomed.width,
+                        height: zoomed.height
+                    )
+                    let watermarkRect = displayedWatermarkRect(
+                        previewSize: image.size,
+                        imageRect: imageRect
+                    )
+                    let dragConfiguration = CanvasDragConfiguration(
+                        imageRect: imageRect,
+                        watermarkRect: watermarkRect,
+                        canDragWatermark: viewModel.isWatermarkEnabled
+                            && viewModel.workingTemplate.layoutMode == .single,
+                        canPan: content.width > geometry.size.width + 0.5
+                            || content.height > geometry.size.height + 0.5
+                    )
 
                     ScrollView([.horizontal, .vertical]) {
                         ZStack {
@@ -81,24 +99,20 @@ struct EditorView: View {
                                 .interpolation(.high)
                                 .frame(width: zoomed.width, height: zoomed.height)
                                 .shadow(color: .black.opacity(0.34), radius: 20, y: 8)
-
-                            if viewModel.workingTemplate.layoutMode == .single {
-                                Color.clear
-                                    .contentShape(Rectangle())
-                                    .frame(width: zoomed.width, height: zoomed.height)
-                                    .gesture(
-                                        DragGesture(minimumDistance: 3)
-                                            .onChanged { value in
-                                                viewModel.updateWatermarkDrag(
-                                                    translation: value.translation,
-                                                    canvasSize: zoomed
-                                                )
-                                            }
-                                            .onEnded { _ in viewModel.endWatermarkDrag() }
-                                    )
-                            }
                         }
                         .frame(width: content.width, height: content.height)
+                        .background {
+                            CanvasDragMonitor(
+                                configuration: dragConfiguration,
+                                onWatermarkDrag: { translation in
+                                    viewModel.updateWatermarkDrag(
+                                        translation: translation,
+                                        canvasSize: zoomed
+                                    )
+                                },
+                                onWatermarkDragEnd: viewModel.endWatermarkDrag
+                            )
+                        }
                     }
                     .overlay(alignment: .topTrailing) {
                         zoomControls
@@ -118,6 +132,9 @@ struct EditorView: View {
                         .foregroundStyle(.white.opacity(0.55))
                 }
             }
+        }
+        .background {
+            MouseWheelZoomMonitor(onZoom: viewModel.zoomWithMouseWheel)
         }
         .contextMenu {
             Button {
@@ -142,6 +159,22 @@ struct EditorView: View {
         .onDrop(of: [UTType.fileURL.identifier, UTType.image.identifier], isTargeted: nil) { providers in
             handleDrop(providers)
         }
+        .help("鼠标滚轮缩放；放大后按住图片拖动或用触控板滚动查看其他区域")
+    }
+
+    private func displayedWatermarkRect(previewSize: CGSize, imageRect: CGRect) -> CGRect? {
+        guard let bounds = WatermarkRenderer.singleWatermarkBounds(
+            canvasSize: previewSize,
+            template: viewModel.workingTemplate
+        ), previewSize.width > 0, previewSize.height > 0 else { return nil }
+
+        let scaled = CGRect(
+            x: imageRect.minX + bounds.minX / previewSize.width * imageRect.width,
+            y: imageRect.minY + bounds.minY / previewSize.height * imageRect.height,
+            width: bounds.width / previewSize.width * imageRect.width,
+            height: bounds.height / previewSize.height * imageRect.height
+        )
+        return scaled.insetBy(dx: -8, dy: -8)
     }
 
     private var zoomControls: some View {
@@ -175,7 +208,7 @@ struct EditorView: View {
             .menuStyle(.borderlessButton)
             .menuIndicator(.hidden)
             .fixedSize()
-            .help("选择缩放比例；100% 为适合窗口")
+            .help("选择缩放比例；100% 为适合窗口；鼠标滚轮可缩放")
 
             Divider().frame(height: 18)
 
@@ -486,12 +519,12 @@ struct EditorView: View {
             return "等待载入图片"
         }
         if !viewModel.isWatermarkEnabled {
-            return "选择其他模板可直接替换"
+            return "滚轮缩放 · 放大后按住图片拖动查看"
         }
         if viewModel.workingTemplate.layoutMode == .tiled {
-            return "满屏平铺 · 密度 \(Int(viewModel.workingTemplate.tileDensity.rounded())) 级"
+            return "滚轮缩放 · 按住图片拖动查看 · 满屏 \(Int(viewModel.workingTemplate.tileDensity.rounded())) 级"
         }
-        return "拖动可定位 · 模板修改自动保存"
+        return "滚轮缩放 · 拖图片查看 · 拖水印定位"
     }
 
     private var customLogoStatus: String {
