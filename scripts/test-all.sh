@@ -7,6 +7,7 @@ EXPECTED_VERSION="$(tr -d '[:space:]' < "$ROOT/VERSION")"
 EXPECTED_BUILD="$(tr -d '[:space:]' < "$ROOT/BUILD_NUMBER")"
 
 cd "$ROOT"
+"$ROOT/scripts/check-docs.sh"
 swift run WatermarkFlowTests
 "$ROOT/scripts/build-app.sh"
 SELF_TEST_OUTPUT="$("$APP/Contents/MacOS/WatermarkFlow" --self-test)"

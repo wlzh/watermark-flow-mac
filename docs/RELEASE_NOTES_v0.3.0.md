@@ -1,4 +1,4 @@
-# WatermarkFlow 0.3.0
+# WatermarkFlow v0.3.0
 
 本版本增加一键满屏水印和可调密度。
 

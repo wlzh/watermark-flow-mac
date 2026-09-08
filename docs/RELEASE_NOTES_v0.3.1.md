@@ -1,4 +1,4 @@
-# WatermarkFlow 0.3.1
+# WatermarkFlow v0.3.1
 
 本版本修正单个水印与满屏水印共用调节参数的问题。
 

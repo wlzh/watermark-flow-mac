@@ -1,4 +1,4 @@
-# WatermarkFlow 0.2.3
+# WatermarkFlow v0.2.3
 
 本版本为 WatermarkFlow 增加完整 MIT 开源许可声明。
 

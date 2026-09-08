@@ -1,4 +1,4 @@
-# WatermarkFlow 0.2.1
+# WatermarkFlow v0.2.1
 
 这是一次完整发布复核版本，重点修复空画布菜单状态和超大自定义 Logo 的性能风险。
 

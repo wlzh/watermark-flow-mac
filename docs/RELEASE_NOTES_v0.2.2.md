@@ -1,4 +1,4 @@
-# WatermarkFlow 0.2.2
+# WatermarkFlow v0.2.2
 
 本版本增加当前会话水印的移除、恢复和替换能力。
 

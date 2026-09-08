@@ -1,4 +1,4 @@
-# WatermarkFlow 0.3.2
+# WatermarkFlow v0.3.2
 
 本版本修复新增自定义 Logo + 文字模板流程不清楚、容易修改原模板或留下未启用 Logo 的问题。
 
