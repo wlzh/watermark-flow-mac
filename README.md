@@ -60,7 +60,7 @@ WatermarkFlow 是一个轻量的原生 macOS 菜单栏水印工具。复制图�
 10. 可在右侧设置剪贴板策略为关闭、仅空画布自动载入或始终自动替换；应用自己的复制输出不会触发再次处理。
 11. 需要更换快捷键时，在右侧“快捷操作”点击录制框并按下新组合键。
 
-详细说明见 [安装文档](docs/INSTALL.md)、[v0.4.1 PRD](docs/prd/v0.4.1/prd.md) 和 [v0.4.1 测试报告](docs/testing/v0.4.1-test-report.md)。
+详细说明见 [文档总览](docs/README.md)、[安装文档](docs/INSTALL.md)、[v0.4.1 PRD](docs/prd/v0.4.1/prd.md) 和 [v0.4.1 测试报告](docs/testing/v0.4.1-test-report.md)。
 
 ## 开源许可
 
