@@ -356,6 +356,13 @@ enum SelfTest {
         guard recordedHotKey == customHotKey, !recorderButton.isRecording else {
             throw Failure("hotkey recorder control failed")
         }
+        let statusBarIcon = BrandIcon.statusBarImage()
+        guard statusBarIcon.isTemplate,
+              statusBarIcon.size == BrandIcon.statusBarSize,
+              statusBarIcon.tiffRepresentation != nil,
+              statusBarIcon.accessibilityDescription == "WatermarkFlow 图片水印" else {
+            throw Failure("brand status-bar icon validation failed")
+        }
 
         let output = try WatermarkRenderer.render(source: source, template: DefaultTemplates.all[0])
         let pasteboard = NSPasteboard(name: NSPasteboard.Name("WatermarkFlow.SelfTest.\(UUID().uuidString)"))
@@ -491,6 +498,7 @@ enum SelfTest {
         print("SELF_TEST_CUSTOM_HOTKEY=PASS value=\(customHotKey.displayName)")
         print("SELF_TEST_DEFAULT_TEMPLATE=PASS value=\(defaultRestoredEditor.defaultTemplateName)")
         print("SELF_TEST_HOTKEY_RECORDER=PASS")
+        print("SELF_TEST_BRAND_ICON=PASS semantic=image+watermark template=18x18")
         print("SELF_TEST_PASTEBOARD_SERVER=PASS changeCount=\(changeCount)")
         print("SELF_TEST_CLIPBOARD_AUTOLOAD=PASS modes=empty,pending,always,off,non-image")
         print("SELF_TEST_CLIPBOARD_SELF_WRITE_SUPPRESSION=PASS")

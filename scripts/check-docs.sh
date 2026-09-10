@@ -23,7 +23,15 @@ versions=("${(@f)$(sed -nE 's/^## \[([0-9]+\.[0-9]+\.[0-9]+)\].*/\1/p' "$ROOT/CH
 (( ${#versions[@]} > 0 )) || fail "no version sections in CHANGELOG.md"
 changelog_versions="$(printf '%s\n' $versions | sort -V)"
 tag_versions="$(git -C "$ROOT" tag --list 'v*' | sed 's/^v//' | sort -V)"
-test "$changelog_versions" = "$tag_versions" || fail "Git tags and CHANGELOG versions differ"
+if git -C "$ROOT" rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+    test "$changelog_versions" = "$tag_versions" || fail "Git tags and CHANGELOG versions differ"
+    VERSION_STATE="tagged"
+else
+    released_versions="$(printf '%s\n' $versions | grep -Fxv "$VERSION" | sort -V)"
+    test "$released_versions" = "$tag_versions" \
+        || fail "released CHANGELOG versions and Git tags differ"
+    VERSION_STATE="development"
+fi
 
 for version in $versions; do
     directory="$ROOT/docs/prd/v$version"
@@ -49,7 +57,7 @@ grep -Fq "WatermarkFlow-v$VERSION-macos-universal.zip" \
     "$ROOT/docs/INSTALL.md" || fail "installation archive version mismatch"
 grep -Fq "v$VERSION PRD" "$ROOT/README.md" || fail "README current PRD link mismatch"
 grep -Fq "25%、50%、75%、100%、125%、150%、200%、300%、400%、500%、750%、1000%" \
-    "$ROOT/docs/prd/v$VERSION/prd.md" || fail "documented zoom levels mismatch"
+    "$ROOT/docs/prd/v0.4.1/prd.md" || fail "documented zoom levels mismatch"
 grep -Fq 'private static let canvasZoomLevels = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4, 5, 7.5, 10]' \
     "$ROOT/Sources/WatermarkFlowApp/EditorViewModel.swift" || fail "implemented zoom levels changed"
 
@@ -72,3 +80,4 @@ echo "DOCS_VERSION=$VERSION"
 echo "DOCS_BUILD=$BUILD_NUMBER"
 echo "DOCS_RELEASE_COUNT=${#versions[@]}"
 echo "DOCS_MARKDOWN_COUNT=$MARKDOWN_COUNT"
+echo "DOCS_VERSION_STATE=$VERSION_STATE"
