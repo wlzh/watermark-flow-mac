@@ -3,23 +3,16 @@ import WatermarkCore
 
 struct AboutView: View {
     @Environment(\.colorScheme) private var colorScheme
-    private let gold = Color(red: 0.94, green: 0.68, blue: 0.24)
 
     private var theme: AppTheme { AppTheme(colorScheme: colorScheme) }
 
     var body: some View {
         VStack(spacing: 18) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 22)
-                    .fill(theme.accent)
-                    .frame(width: 86, height: 86)
-                Circle()
-                    .fill(gold)
-                    .frame(width: 52, height: 52)
-                Image(systemName: "seal.fill")
-                    .font(.system(size: 29, weight: .semibold))
-                    .foregroundStyle(theme.textPrimary)
-            }
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .interpolation(.high)
+                .frame(width: 90, height: 90)
+                .accessibilityLabel("WatermarkFlow 图片水印图标")
 
             VStack(spacing: 5) {
                 Text("WatermarkFlow")

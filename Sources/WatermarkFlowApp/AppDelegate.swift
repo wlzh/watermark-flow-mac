@@ -141,7 +141,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private func performQuickApply(templateID: UUID) {
         do {
             _ = try viewModel.quickApplyTemplateToClipboard(id: templateID)
-            flashStatus(symbol: "checkmark.seal.fill")
+            flashStatus(symbol: "checkmark.circle.fill")
             NSSound(named: "Tink")?.play()
         } catch {
             showEditor()
@@ -178,7 +178,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     private func configureStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        item.button?.image = NSImage(systemSymbolName: "seal.fill", accessibilityDescription: "WatermarkFlow")
+        item.button?.image = BrandIcon.statusBarImage()
         item.button?.toolTip = "WatermarkFlow · \(viewModel.hotKeyConfiguration.displayName) 快速加水印"
 
         let menu = NSMenu()
