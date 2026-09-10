@@ -8,4 +8,4 @@
 - [x] About 窗口改为显示真实 App 图标。
 - [x] 增加图标自检和安装包资源门禁。
 - [x] 同步版本、Changelog、README、PRD、设计、开发和 Release Notes。
-- [ ] 完成全量测试、本机安装、实际界面复验、打包和 GitHub Release。
+- [x] 完成全量测试、本机安装、实际界面复验、打包和 GitHub Release。

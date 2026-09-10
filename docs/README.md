@@ -32,7 +32,7 @@
 
 每个版本必须包含 `prd.md`、`design.md`、`dev.md`、`plan.md`、测试报告和 Release Notes。PRD 记录需求和验收标准，设计文档记录界面与交互，开发记录说明实现，计划仅记录任务状态，测试报告保存实际验证证据，Release Notes 面向安装用户。
 
-Git 标签、仓库内 Release Notes 和 GitHub Release 是三种不同状态：标签用于固定源码版本；Release Notes 是版本说明文件；只有 GitHub Release 才代表仓库提供可下载资产。截至 2026-09-08，GitHub 保留安装资产的版本为 `v0.2.1`、`v0.3.1`、`v0.3.2`、`v0.4.0` 和 `v0.4.1`，均为公开 prerelease；其他历史版本仅保留 Git 标签和仓库内文档。
+Git 标签、仓库内 Release Notes 和 GitHub Release 是三种不同状态：标签用于固定源码版本；Release Notes 是版本说明文件；只有 GitHub Release 才代表仓库提供可下载资产。截至 2026-09-10，GitHub 保留安装资产的版本为 `v0.2.1`、`v0.3.1`、`v0.3.2`、`v0.4.0`、`v0.4.1` 和 `v0.4.2`，均为公开 prerelease；其他历史版本仅保留 Git 标签和仓库内文档。
 
 ## 一致性检查
 
