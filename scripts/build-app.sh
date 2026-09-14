@@ -17,6 +17,11 @@ lipo -create \
     "$ROOT/.build/arm64-apple-macosx/release/WatermarkFlow" \
     "$ROOT/.build/x86_64-apple-macosx/release/WatermarkFlow" \
     -output "$CONTENTS/MacOS/WatermarkFlow"
+strip -S "$CONTENTS/MacOS/WatermarkFlow"
+if rg -a -q '/Users/|/home/' "$CONTENTS/MacOS/WatermarkFlow"; then
+    echo 'Release binary contains a local user path' >&2
+    exit 1
+fi
 cp "$ROOT/Resources/Info.plist" "$CONTENTS/Info.plist"
 cp "$ROOT/LICENSE" "$CONTENTS/Resources/LICENSE.txt"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$CONTENTS/Info.plist"
