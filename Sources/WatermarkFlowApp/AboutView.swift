@@ -35,7 +35,7 @@ struct AboutView: View {
             }
             .font(.system(size: 13))
 
-            Text("图片仅在本机处理，不会上传网络")
+            Text("图片仅在本机处理；网页图片仅从原地址读取")
                 .font(.system(size: 11))
                 .foregroundStyle(theme.textSecondary)
 

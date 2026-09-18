@@ -10,8 +10,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var statusItem: NSStatusItem?
     private var globalHotKey: GlobalHotKey?
     private var quickTemplateMenu: NSMenu?
+    private var defaultTemplateMenu: NSMenu?
     private var defaultQuickMenuItem: NSMenuItem?
     private var clipboardTimer: Timer?
+    private var quickApplyTask: Task<Void, Never>?
+    private var statusFlashGeneration = 0
 
     override convenience init() {
         self.init(viewModel: EditorViewModel())
@@ -54,6 +57,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     func applicationWillTerminate(_ notification: Notification) {
         clipboardTimer?.invalidate()
+        quickApplyTask?.cancel()
         viewModel.flushPersistence()
     }
 
@@ -85,7 +89,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
     @objc func pasteAndEdit() {
         showEditor()
-        viewModel.loadFromClipboard()
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let image = try await ClipboardService.readImageResolvingWebContent()
+                self.viewModel.loadImageFromResolvedClipboard(image)
+            } catch {
+                self.viewModel.statusMessage = error.localizedDescription
+            }
+        }
     }
 
     @objc func openImage() {
@@ -138,16 +150,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         performQuickApply(templateID: templateID)
     }
 
+    @objc func selectDefaultTemplate(_ sender: NSMenuItem) {
+        guard let value = sender.representedObject as? String,
+              let templateID = UUID(uuidString: value) else { return }
+        viewModel.setDefaultTemplate(id: templateID)
+        defaultQuickMenuItem?.title = defaultQuickMenuTitle
+        rebuildQuickTemplateMenu()
+        rebuildDefaultTemplateMenu()
+        flashStatus(symbol: "checkmark.circle.fill")
+    }
+
     private func performQuickApply(templateID: UUID) {
-        do {
-            _ = try viewModel.quickApplyTemplateToClipboard(id: templateID)
-            flashStatus(symbol: "checkmark.circle.fill")
-            NSSound(named: "Tink")?.play()
-        } catch {
-            showEditor()
-            viewModel.statusMessage = error.localizedDescription
-            flashStatus(symbol: "exclamationmark.triangle.fill")
-            NSSound.beep()
+        guard quickApplyTask == nil else { return }
+        flashStatus(symbol: "hourglass", duration: 15)
+        quickApplyTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.quickApplyTask = nil }
+            do {
+                _ = try await self.viewModel.quickApplyTemplateToClipboard(id: templateID)
+                guard !Task.isCancelled else { return }
+                self.flashStatus(symbol: "checkmark.circle.fill")
+                NSSound(named: "Tink")?.play()
+            } catch {
+                guard !Task.isCancelled else { return }
+                self.showEditor()
+                self.viewModel.statusMessage = error.localizedDescription
+                self.flashStatus(symbol: "exclamationmark.triangle.fill")
+                NSSound.beep()
+            }
         }
     }
 
@@ -189,6 +219,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         let submenu = makeQuickTemplateMenu()
         quick.submenu = submenu
         menu.addItem(quick)
+        let chooseDefault = NSMenuItem(title: "设置快捷默认模板", action: nil, keyEquivalent: "")
+        chooseDefault.submenu = makeDefaultTemplateMenu()
+        menu.addItem(chooseDefault)
         let defaultQuick = menuItem(
             defaultQuickMenuTitle,
             action: #selector(quickApply)
@@ -270,10 +303,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         return menu
     }
 
+    func makeDefaultTemplateMenu() -> NSMenu {
+        let menu = NSMenu(title: "设置快捷默认模板")
+        menu.delegate = self
+        defaultTemplateMenu = menu
+        rebuildDefaultTemplateMenu()
+        return menu
+    }
+
     func menuWillOpen(_ menu: NSMenu) {
         defaultQuickMenuItem?.title = defaultQuickMenuTitle
         if menu === quickTemplateMenu {
             rebuildQuickTemplateMenu()
+        } else if menu === defaultTemplateMenu {
+            rebuildDefaultTemplateMenu()
         }
     }
 
@@ -282,6 +325,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         menu.removeAllItems()
         for template in viewModel.templates {
             let item = menuItem(template.name, action: #selector(quickApplyTemplate(_:)))
+            item.representedObject = template.id.uuidString
+            item.state = template.id == viewModel.defaultTemplateID ? .on : .off
+            menu.addItem(item)
+        }
+    }
+
+    private func rebuildDefaultTemplateMenu() {
+        guard let menu = defaultTemplateMenu else { return }
+        menu.removeAllItems()
+        for template in viewModel.templates {
+            let item = menuItem(template.name, action: #selector(selectDefaultTemplate(_:)))
             item.representedObject = template.id.uuidString
             item.state = template.id == viewModel.defaultTemplateID ? .on : .off
             menu.addItem(item)
@@ -338,12 +392,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         }
     }
 
-    private func flashStatus(symbol: String) {
+    private func flashStatus(symbol: String, duration: TimeInterval = 1.4) {
         guard let button = statusItem?.button else { return }
-        let original = button.image
+        statusFlashGeneration += 1
+        let generation = statusFlashGeneration
         button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) {
-            button.image = original
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self, weak button] in
+            guard self?.statusFlashGeneration == generation else { return }
+            button?.image = BrandIcon.statusBarImage()
         }
     }
 }

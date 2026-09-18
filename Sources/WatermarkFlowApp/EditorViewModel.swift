@@ -219,6 +219,18 @@ final class EditorViewModel: ObservableObject {
         _ = loadFromClipboard(pasteboard)
     }
 
+    func loadImageFromResolvedClipboard(
+        _ image: NSImage,
+        pasteboard: NSPasteboard = .general
+    ) {
+        loadImage(image)
+        let revision = PasteboardRevision(pasteboard)
+        lastObservedPasteboardRevision = revision
+        lastLoadedPasteboardRevision = revision
+        hasPendingClipboardImage = false
+        statusMessage = "已从剪贴板载入网页图片"
+    }
+
     func dismissPendingClipboardImage() {
         hasPendingClipboardImage = false
         statusMessage = "已忽略本次剪贴板图片"
@@ -304,16 +316,20 @@ final class EditorViewModel: ObservableObject {
         }
     }
 
-    func quickApplyDefaultToClipboard(_ pasteboard: NSPasteboard = .general) throws -> NSImage {
-        try quickApplyTemplateToClipboard(id: defaultTemplateID, pasteboard: pasteboard)
+    func quickApplyDefaultToClipboard(_ pasteboard: NSPasteboard = .general) async throws -> NSImage {
+        try await quickApplyTemplateToClipboard(id: defaultTemplateID, pasteboard: pasteboard)
     }
 
     func quickApplyTemplateToClipboard(
         id: UUID,
-        pasteboard: NSPasteboard = .general
-    ) throws -> NSImage {
+        pasteboard: NSPasteboard = .general,
+        remoteLoader: ClipboardService.RemoteImageDataLoader? = nil
+    ) async throws -> NSImage {
         flushPersistence()
-        let source = try ClipboardService.readImage(from: pasteboard)
+        let source = try await ClipboardService.readImageResolvingWebContent(
+            from: pasteboard,
+            remoteLoader: remoteLoader
+        )
         let output = try renderForQuickApply(source: source, templateID: id)
         let changeCount = try ClipboardService.writeImage(output, to: pasteboard)
         recordClipboardWrite(pasteboard, changeCount: changeCount)

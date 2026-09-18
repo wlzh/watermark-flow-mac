@@ -473,6 +473,28 @@ enum SelfTest {
                 == restoredEditor.defaultTemplateID.uuidString else {
             throw Failure("dynamic quick-template menu failed")
         }
+        let defaultMenu = appDelegate.makeDefaultTemplateMenu()
+        guard defaultMenu.items.map(\.title) == restoredEditor.templates.map(\.name),
+              defaultMenu.items.filter({ $0.state == .on }).count == 1,
+              defaultMenu.items.first(where: { $0.state == .on })?.representedObject as? String
+                == restoredEditor.defaultTemplateID.uuidString,
+              defaultMenu.items.allSatisfy({ $0.action == #selector(AppDelegate.selectDefaultTemplate(_:)) }) else {
+            throw Failure("dynamic default-template menu failed")
+        }
+        guard let alternateTemplate = restoredEditor.templates.first(where: {
+            $0.id != restoredEditor.defaultTemplateID
+        }), let alternateItem = defaultMenu.items.first(where: {
+            $0.representedObject as? String == alternateTemplate.id.uuidString
+        }) else {
+            throw Failure("default-template menu has no alternate template")
+        }
+        appDelegate.selectDefaultTemplate(alternateItem)
+        guard restoredEditor.defaultTemplateID == alternateTemplate.id,
+              defaultMenu.items.filter({ $0.state == .on }).count == 1,
+              defaultMenu.items.first(where: { $0.state == .on })?.representedObject as? String
+                == alternateTemplate.id.uuidString else {
+            throw Failure("default-template menu selection was not applied")
+        }
 
         print("SELF_TEST_VERSION=\(AppVersion.current)")
         print("SELF_TEST_BUILD=\(AppVersion.build)")
@@ -504,6 +526,7 @@ enum SelfTest {
         print("SELF_TEST_CLIPBOARD_SELF_WRITE_SUPPRESSION=PASS")
         print("SELF_TEST_EMPTY_MENU_VALIDATION=PASS")
         print("SELF_TEST_QUICK_TEMPLATE_MENU=PASS items=\(quickMenu.items.count)")
+        print("SELF_TEST_DEFAULT_TEMPLATE_MENU=PASS items=\(defaultMenu.items.count)")
     }
 
     private static func makeSourceImage(width: Int, height: Int) throws -> NSImage {

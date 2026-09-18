@@ -4,8 +4,8 @@
 
 | 项目 | 当前值 | 权威来源 |
 | --- | --- | --- |
-| 应用版本 | `0.4.2` | [`VERSION`](../VERSION) |
-| 构建号 | `13` | [`BUILD_NUMBER`](../BUILD_NUMBER) |
+| 应用版本 | `0.4.3` | [`VERSION`](../VERSION) |
+| 构建号 | `14` | [`BUILD_NUMBER`](../BUILD_NUMBER) |
 | 模板 schema | `4` | [`TemplateRepository.swift`](../Sources/WatermarkCore/TemplateRepository.swift) |
 | 最低系统 | macOS 13 | [`Info.plist`](../Resources/Info.plist) 与 [`Package.swift`](../Package.swift) |
 | 架构 | Universal `arm64` / `x86_64` | [`build-app.sh`](../scripts/build-app.sh) |
@@ -18,12 +18,12 @@
 
 ## 当前版本文档
 
-- [v0.4.2 PRD](prd/v0.4.2/prd.md)
-- [v0.4.2 视觉设计](prd/v0.4.2/design.md)
-- [v0.4.2 开发记录](prd/v0.4.2/dev.md)
-- [v0.4.2 实施计划](prd/v0.4.2/plan.md)
-- [v0.4.2 测试报告](testing/v0.4.2-test-report.md)
-- [v0.4.2 Release Notes](RELEASE_NOTES_v0.4.2.md)
+- [v0.4.3 PRD](prd/v0.4.3/prd.md)
+- [v0.4.3 交互设计](prd/v0.4.3/design.md)
+- [v0.4.3 开发记录](prd/v0.4.3/dev.md)
+- [v0.4.3 实施计划](prd/v0.4.3/plan.md)
+- [v0.4.3 测试报告](testing/v0.4.3-test-report.md)
+- [v0.4.3 Release Notes](RELEASE_NOTES_v0.4.3.md)
 - [安装、卸载和分发限制](INSTALL.md)
 - [全部版本 PRD 索引](prd/README.md)
 - [Changelog](../CHANGELOG.md)

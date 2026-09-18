@@ -33,6 +33,32 @@ func expect(_ condition: @autoclosure () -> Bool, _ message: String) throws {
     if !condition() { throw TestFailure(message: message) }
 }
 
+final class AsyncResultBox<Value>: @unchecked Sendable {
+    var result: Result<Value, Error>?
+}
+
+func waitForMainActorOperation<Value>(
+    timeout: TimeInterval = 5,
+    _ operation: @escaping @MainActor () async throws -> Value
+) throws -> Value {
+    let box = AsyncResultBox<Value>()
+    Task { @MainActor in
+        do {
+            box.result = .success(try await operation())
+        } catch {
+            box.result = .failure(error)
+        }
+    }
+    let deadline = Date().addingTimeInterval(timeout)
+    while box.result == nil, Date() < deadline {
+        _ = RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.01))
+    }
+    guard let result = box.result else {
+        throw TestFailure(message: "async operation timed out")
+    }
+    return try result.get()
+}
+
 func makeImage(
     width: Int,
     height: Int,
@@ -906,6 +932,56 @@ runner.test("clipboard round-trip works on isolated pasteboard") {
     try expect(changeCount > 0, "pasteboard change count did not advance")
     try expect(WatermarkRenderer.pixelSize(of: reread) == CGSize(width: 320, height: 180), "pasteboard changed pixels")
     try expect(pasteboard.types?.contains(.png) == true, "PNG pasteboard type missing")
+}
+
+runner.test("single HTML clipboard image resolves through HTTPS fallback") {
+    let pasteboard = NSPasteboard(name: NSPasteboard.Name("WatermarkFlowHTMLTests.\(UUID().uuidString)"))
+    defer { pasteboard.releaseGlobally() }
+    let source = try sampleImage(width: 420, height: 240)
+    let png = try WatermarkRenderer.encode(image: source, format: .png)
+    pasteboard.clearContents()
+    pasteboard.setString(
+        #"<div><img data-src="https://auth.example.test/unavailable.png" src="https://images.example.test/source.png?x=1&amp;y=2"></div>"#,
+        forType: .html
+    )
+
+    let resolved = try waitForMainActorOperation {
+        try await ClipboardService.readImageResolvingWebContent(from: pasteboard) { request in
+            guard request.url?.absoluteString == "https://images.example.test/source.png?x=1&y=2" else {
+                throw TestFailure(message: "HTML image URL was parsed incorrectly")
+            }
+            let response = URLResponse(
+                url: request.url!,
+                mimeType: "image/png",
+                expectedContentLength: png.count,
+                textEncodingName: nil
+            )
+            return (png, response)
+        }
+    }
+    try expect(
+        WatermarkRenderer.pixelSize(of: resolved) == CGSize(width: 420, height: 240),
+        "HTML clipboard fallback changed image pixels"
+    )
+}
+
+runner.test("HTML clipboard fallback rejects ambiguous multiple images") {
+    let pasteboard = NSPasteboard(name: NSPasteboard.Name("WatermarkFlowHTMLTests.\(UUID().uuidString)"))
+    defer { pasteboard.releaseGlobally() }
+    pasteboard.clearContents()
+    pasteboard.setString(
+        #"<img src="https://images.example.test/one.png"><img src="https://images.example.test/two.png">"#,
+        forType: .html
+    )
+
+    do {
+        _ = try waitForMainActorOperation {
+            try await ClipboardService.readImageResolvingWebContent(from: pasteboard)
+        }
+        throw TestFailure(message: "multiple HTML images should not resolve implicitly")
+    } catch ClipboardError.multipleWebImages {
+        // Expected: choosing a source implicitly could watermark the wrong image.
+    }
 }
 
 runner.finish()
