@@ -934,6 +934,101 @@ runner.test("clipboard round-trip works on isolated pasteboard") {
     try expect(pasteboard.types?.contains(.png) == true, "PNG pasteboard type missing")
 }
 
+runner.test("single local image file clipboard URL is readable") {
+    let pasteboard = NSPasteboard(name: NSPasteboard.Name("WatermarkFlowFileTests.\(UUID().uuidString)"))
+    defer { pasteboard.releaseGlobally() }
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("WatermarkFlowFileTests-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let imageURL = directory.appendingPathComponent("copied-image.png")
+    let source = try sampleImage(width: 512, height: 288)
+    try WatermarkRenderer.encode(image: source, format: .png).write(to: imageURL)
+
+    pasteboard.clearContents()
+    try expect(pasteboard.writeObjects([imageURL as NSURL]), "file URL pasteboard write failed")
+    try expect(pasteboard.types?.contains(.fileURL) == true, "file URL pasteboard type missing")
+    try expect(ClipboardService.canReadImage(from: pasteboard), "image file was not recognized")
+    let reread = try ClipboardService.readImage(from: pasteboard)
+    try expect(
+        WatermarkRenderer.pixelSize(of: reread) == CGSize(width: 512, height: 288),
+        "local image file changed dimensions"
+    )
+}
+
+runner.test("multiple local image files are rejected") {
+    let pasteboard = NSPasteboard(name: NSPasteboard.Name("WatermarkFlowFileTests.\(UUID().uuidString)"))
+    defer { pasteboard.releaseGlobally() }
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("WatermarkFlowFileTests-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let png = try WatermarkRenderer.encode(image: sampleImage(width: 80, height: 60), format: .png)
+    let firstURL = directory.appendingPathComponent("first.png")
+    let secondURL = directory.appendingPathComponent("second.png")
+    try png.write(to: firstURL)
+    try png.write(to: secondURL)
+
+    pasteboard.clearContents()
+    try expect(
+        pasteboard.writeObjects([firstURL as NSURL, secondURL as NSURL]),
+        "multiple file URL pasteboard write failed"
+    )
+    try expect(!ClipboardService.canReadImage(from: pasteboard), "multiple files should not auto-load")
+    do {
+        _ = try ClipboardService.readImage(from: pasteboard)
+        throw TestFailure(message: "multiple image files should not resolve implicitly")
+    } catch ClipboardError.multipleImageFiles {
+        // Expected: implicit selection could watermark the wrong file.
+    }
+}
+
+runner.test("invalid local clipboard files are rejected") {
+    let pasteboard = NSPasteboard(name: NSPasteboard.Name("WatermarkFlowFileTests.\(UUID().uuidString)"))
+    defer { pasteboard.releaseGlobally() }
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("WatermarkFlowFileTests-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let textURL = directory.appendingPathComponent("not-an-image.txt")
+    try Data("not an image".utf8).write(to: textURL)
+    pasteboard.clearContents()
+    try expect(pasteboard.writeObjects([textURL as NSURL]), "text file URL pasteboard write failed")
+    try expect(!ClipboardService.canReadImage(from: pasteboard), "text file should not auto-load")
+    do {
+        _ = try ClipboardService.readImage(from: pasteboard)
+        throw TestFailure(message: "text file should not decode as an image")
+    } catch ClipboardError.unreadableImageFile {
+        // Expected.
+    }
+
+    pasteboard.clearContents()
+    try expect(pasteboard.writeObjects([directory as NSURL]), "directory URL pasteboard write failed")
+    try expect(!ClipboardService.canReadImage(from: pasteboard), "directory should not auto-load")
+    do {
+        _ = try ClipboardService.readImage(from: pasteboard)
+        throw TestFailure(message: "directory should not decode as an image")
+    } catch ClipboardError.unreadableImageFile {
+        // Expected.
+    }
+
+    let oversizedURL = directory.appendingPathComponent("oversized.png")
+    try expect(FileManager.default.createFile(atPath: oversizedURL.path, contents: nil), "large file creation failed")
+    let handle = try FileHandle(forWritingTo: oversizedURL)
+    try handle.truncate(atOffset: UInt64(512 * 1_024 * 1_024 + 1))
+    try handle.close()
+    pasteboard.clearContents()
+    try expect(pasteboard.writeObjects([oversizedURL as NSURL]), "large image URL pasteboard write failed")
+    try expect(!ClipboardService.canReadImage(from: pasteboard), "oversized image should not auto-load")
+    do {
+        _ = try ClipboardService.readImage(from: pasteboard)
+        throw TestFailure(message: "oversized image file should be rejected")
+    } catch ClipboardError.localImageFileTooLarge {
+        // Expected.
+    }
+}
+
 runner.test("single HTML clipboard image resolves through HTTPS fallback") {
     let pasteboard = NSPasteboard(name: NSPasteboard.Name("WatermarkFlowHTMLTests.\(UUID().uuidString)"))
     defer { pasteboard.releaseGlobally() }

@@ -466,7 +466,9 @@ struct EditorView: View {
 
     private var footer: some View {
         HStack(spacing: 10) {
-            Button("从剪贴板载入") { viewModel.loadFromClipboard() }
+            Button("从剪贴板载入") {
+                Task { await viewModel.loadFromClipboardResolvingRichContent() }
+            }
                 .buttonStyle(outlineButtonStyle)
             Button("打开图片…") { viewModel.openImage() }
                 .buttonStyle(outlineButtonStyle)

@@ -91,12 +91,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         showEditor()
         Task { @MainActor [weak self] in
             guard let self else { return }
-            do {
-                let image = try await ClipboardService.readImageResolvingWebContent()
-                self.viewModel.loadImageFromResolvedClipboard(image)
-            } catch {
-                self.viewModel.statusMessage = error.localizedDescription
-            }
+            await self.viewModel.loadFromClipboardResolvingRichContent()
         }
     }
 

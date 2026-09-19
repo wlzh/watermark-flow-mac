@@ -4,8 +4,8 @@
 
 | 项目 | 当前值 | 权威来源 |
 | --- | --- | --- |
-| 应用版本 | `0.4.3` | [`VERSION`](../VERSION) |
-| 构建号 | `14` | [`BUILD_NUMBER`](../BUILD_NUMBER) |
+| 应用版本 | `0.4.4` | [`VERSION`](../VERSION) |
+| 构建号 | `15` | [`BUILD_NUMBER`](../BUILD_NUMBER) |
 | 模板 schema | `4` | [`TemplateRepository.swift`](../Sources/WatermarkCore/TemplateRepository.swift) |
 | 最低系统 | macOS 13 | [`Info.plist`](../Resources/Info.plist) 与 [`Package.swift`](../Package.swift) |
 | 架构 | Universal `arm64` / `x86_64` | [`build-app.sh`](../scripts/build-app.sh) |
@@ -18,12 +18,12 @@
 
 ## 当前版本文档
 
-- [v0.4.3 PRD](prd/v0.4.3/prd.md)
-- [v0.4.3 交互设计](prd/v0.4.3/design.md)
-- [v0.4.3 开发记录](prd/v0.4.3/dev.md)
-- [v0.4.3 实施计划](prd/v0.4.3/plan.md)
-- [v0.4.3 测试报告](testing/v0.4.3-test-report.md)
-- [v0.4.3 Release Notes](RELEASE_NOTES_v0.4.3.md)
+- [v0.4.4 PRD](prd/v0.4.4/prd.md)
+- [v0.4.4 交互设计](prd/v0.4.4/design.md)
+- [v0.4.4 开发记录](prd/v0.4.4/dev.md)
+- [v0.4.4 实施计划](prd/v0.4.4/plan.md)
+- [v0.4.4 测试报告](testing/v0.4.4-test-report.md)
+- [v0.4.4 Release Notes](RELEASE_NOTES_v0.4.4.md)
 - [安装、卸载和分发限制](INSTALL.md)
 - [全部版本 PRD 索引](prd/README.md)
 - [Changelog](../CHANGELOG.md)
@@ -32,7 +32,7 @@
 
 每个版本必须包含 `prd.md`、`design.md`、`dev.md`、`plan.md`、测试报告和 Release Notes。PRD 记录需求和验收标准，设计文档记录界面与交互，开发记录说明实现，计划仅记录任务状态，测试报告保存实际验证证据，Release Notes 面向安装用户。
 
-Git 标签、仓库内 Release Notes 和 GitHub Release 是三种不同状态：标签用于固定源码版本；Release Notes 是版本说明文件；只有 GitHub Release 才代表仓库提供可下载资产。截至 2026-09-18，GitHub 保留安装资产的版本为 `v0.2.1`、`v0.3.1`、`v0.3.2`、`v0.4.0`、`v0.4.1`、`v0.4.2` 和 `v0.4.3`，均为公开 prerelease；其他历史版本仅保留 Git 标签和仓库内文档。
+Git 标签、仓库内 Release Notes 和 GitHub Release 是三种不同状态：标签用于固定源码版本；Release Notes 是版本说明文件；只有 GitHub Release 才代表仓库提供可下载资产。截至 2026-09-19，GitHub 保留安装资产的版本为 `v0.2.1`、`v0.3.1`、`v0.3.2`、`v0.4.0`、`v0.4.1`、`v0.4.2`、`v0.4.3` 和 `v0.4.4`，均为公开 prerelease；其他历史版本仅保留 Git 标签和仓库内文档。
 
 ## 一致性检查
 

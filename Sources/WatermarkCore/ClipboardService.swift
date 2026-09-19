@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import UniformTypeIdentifiers
 
 public enum ClipboardError: LocalizedError {
     case noImage
@@ -9,6 +10,9 @@ public enum ClipboardError: LocalizedError {
     case unsupportedWebImageSource
     case webImageUnavailable
     case imageTooLarge
+    case multipleImageFiles
+    case unreadableImageFile
+    case localImageFileTooLarge
 
     public var errorDescription: String? {
         switch self {
@@ -19,6 +23,9 @@ public enum ClipboardError: LocalizedError {
         case .unsupportedWebImageSource: return "网页图片地址不受支持，请在图片上右键选择“复制图像”后重试"
         case .webImageUnavailable: return "已识别网页图片，但无法读取原图，请在图片上右键选择“复制图像”后重试"
         case .imageTooLarge: return "复制的网页图片超过 64 MB 限制"
+        case .multipleImageFiles: return "剪贴板包含多个文件，请只复制一个图片文件"
+        case .unreadableImageFile: return "复制的文件不是可读取的图片"
+        case .localImageFileTooLarge: return "复制的图片文件超过 512 MB 限制"
         }
     }
 }
@@ -27,12 +34,28 @@ public enum ClipboardService {
     public typealias RemoteImageDataLoader = (URLRequest) async throws -> (Data, URLResponse)
 
     private static let maximumWebImageBytes = 64 * 1_024 * 1_024
+    private static let maximumLocalImageFileBytes = 512 * 1_024 * 1_024
 
     public static func readImage(from pasteboard: NSPasteboard = .general) throws -> NSImage {
-        guard let image = NSImage(pasteboard: pasteboard) else {
-            throw ClipboardError.noImage
+        if localFileURLs(from: pasteboard)?.isEmpty == false {
+            return try readLocalImageFile(from: pasteboard)
         }
-        return image
+        if let image = NSImage(pasteboard: pasteboard) {
+            return image
+        }
+        throw ClipboardError.noImage
+    }
+
+    public static func canReadImage(from pasteboard: NSPasteboard = .general) -> Bool {
+        if let urls = localFileURLs(from: pasteboard), !urls.isEmpty {
+            guard urls.count == 1, isImageFile(urls[0]) else { return false }
+            guard let fileSize = localFileSize(urls[0]) else { return false }
+            return fileSize <= maximumLocalImageFileBytes
+        }
+        if pasteboard.canReadObject(forClasses: [NSImage.self]) {
+            return true
+        }
+        return false
     }
 
     @MainActor
@@ -40,8 +63,12 @@ public enum ClipboardService {
         from pasteboard: NSPasteboard = .general,
         remoteLoader: RemoteImageDataLoader? = nil
     ) async throws -> NSImage {
-        if let image = NSImage(pasteboard: pasteboard) {
-            return image
+        do {
+            return try readImage(from: pasteboard)
+        } catch ClipboardError.noImage {
+            // Continue with the explicit HTML fallback.
+        } catch {
+            throw error
         }
         guard let html = clipboardHTML(from: pasteboard) else {
             throw ClipboardError.noImage
@@ -85,6 +112,54 @@ public enum ClipboardService {
         guard let data = pasteboard.data(forType: .html) else { return nil }
         return String(data: data, encoding: .utf8)
             ?? String(data: data, encoding: .unicode)
+    }
+
+    private static func readLocalImageFile(from pasteboard: NSPasteboard) throws -> NSImage {
+        guard let urls = localFileURLs(from: pasteboard), !urls.isEmpty else {
+            throw ClipboardError.noImage
+        }
+        guard urls.count == 1 else { throw ClipboardError.multipleImageFiles }
+        let url = urls[0]
+        guard isImageFile(url) else { throw ClipboardError.unreadableImageFile }
+        if let fileSize = localFileSize(url),
+           fileSize > maximumLocalImageFileBytes {
+            throw ClipboardError.localImageFileTooLarge
+        }
+        guard let image = NSImage(contentsOf: url) else {
+            throw ClipboardError.unreadableImageFile
+        }
+        return image
+    }
+
+    private static func localFileURLs(from pasteboard: NSPasteboard) -> [URL]? {
+        let options: [NSPasteboard.ReadingOptionKey: Any] = [
+            .urlReadingFileURLsOnly: true
+        ]
+        guard let objects = pasteboard.readObjects(
+            forClasses: [NSURL.self],
+            options: options
+        ) else { return nil }
+        return objects.compactMap { object in
+            guard let url = object as? NSURL else { return nil }
+            return url as URL
+        }
+    }
+
+    private static func isImageFile(_ url: URL) -> Bool {
+        guard url.isFileURL,
+              let values = try? url.resourceValues(forKeys: [
+                  .isRegularFileKey,
+                  .contentTypeKey
+              ]),
+              values.isRegularFile == true else { return false }
+        if let contentType = values.contentType {
+            return contentType.conforms(to: .image)
+        }
+        return NSImage(contentsOf: url) != nil
+    }
+
+    private static func localFileSize(_ url: URL) -> Int? {
+        try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize
     }
 
     private static func imageSources(in html: String) -> [String] {

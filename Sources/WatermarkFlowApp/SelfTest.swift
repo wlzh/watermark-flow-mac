@@ -431,6 +431,18 @@ enum SelfTest {
         guard clipboardEditor.observeClipboard(clipboardPasteboard) == .ignoredNonImage else {
             throw Failure("non-image clipboard content was not ignored")
         }
+        let clipboardFileURL = temporary.deletingLastPathComponent()
+            .appendingPathComponent("clipboard-file-image.png")
+        try WatermarkRenderer.encode(image: replacement, format: .png).write(to: clipboardFileURL)
+        defer { try? FileManager.default.removeItem(at: clipboardFileURL) }
+        clipboardEditor.clearCanvas()
+        clipboardPasteboard.clearContents()
+        guard clipboardPasteboard.writeObjects([clipboardFileURL as NSURL]),
+              ClipboardService.canReadImage(from: clipboardPasteboard),
+              clipboardEditor.observeClipboard(clipboardPasteboard) == .loaded,
+              clipboardEditor.sourcePixelDescription == "640 × 400 px" else {
+            throw Failure("local image file clipboard auto-load failed")
+        }
         clipboardEditor.updateClipboardAutoLoadMode(.off)
         let clipboardRestoredEditor = EditorViewModel(
             repository: clipboardRepository,
@@ -523,6 +535,7 @@ enum SelfTest {
         print("SELF_TEST_BRAND_ICON=PASS semantic=image+watermark template=18x18")
         print("SELF_TEST_PASTEBOARD_SERVER=PASS changeCount=\(changeCount)")
         print("SELF_TEST_CLIPBOARD_AUTOLOAD=PASS modes=empty,pending,always,off,non-image")
+        print("SELF_TEST_CLIPBOARD_FILE_IMAGE=PASS mode=single-local-file")
         print("SELF_TEST_CLIPBOARD_SELF_WRITE_SUPPRESSION=PASS")
         print("SELF_TEST_EMPTY_MENU_VALIDATION=PASS")
         print("SELF_TEST_QUICK_TEMPLATE_MENU=PASS items=\(quickMenu.items.count)")

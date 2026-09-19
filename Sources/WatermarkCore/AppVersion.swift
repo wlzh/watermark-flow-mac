@@ -1,6 +1,6 @@
 public enum AppVersion {
-    public static let current = "0.4.3"
-    public static let build = "14"
+    public static let current = "0.4.4"
+    public static let build = "15"
     public static let bundleIdentifier = "com.wlzh.WatermarkFlow"
     public static let author = "X @wlzh"
     public static let authorProfileURL = "https://x.com/wlzh"

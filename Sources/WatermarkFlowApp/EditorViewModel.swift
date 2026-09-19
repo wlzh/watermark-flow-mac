@@ -198,7 +198,7 @@ final class EditorViewModel: ObservableObject {
         if revision == lastWrittenPasteboardRevision || revision == lastLoadedPasteboardRevision {
             return .ignoredOwnOrLoadedImage
         }
-        guard pasteboard.canReadObject(forClasses: [NSImage.self]) else {
+        guard ClipboardService.canReadImage(from: pasteboard) else {
             hasPendingClipboardImage = false
             return .ignoredNonImage
         }
@@ -228,7 +228,18 @@ final class EditorViewModel: ObservableObject {
         lastObservedPasteboardRevision = revision
         lastLoadedPasteboardRevision = revision
         hasPendingClipboardImage = false
-        statusMessage = "已从剪贴板载入网页图片"
+        statusMessage = "已从剪贴板载入图片"
+    }
+
+    func loadFromClipboardResolvingRichContent(
+        _ pasteboard: NSPasteboard = .general
+    ) async {
+        do {
+            let image = try await ClipboardService.readImageResolvingWebContent(from: pasteboard)
+            loadImageFromResolvedClipboard(image, pasteboard: pasteboard)
+        } catch {
+            statusMessage = error.localizedDescription
+        }
     }
 
     func dismissPendingClipboardImage() {
