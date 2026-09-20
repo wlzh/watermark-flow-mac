@@ -441,7 +441,9 @@ struct EditorView: View {
                     )
                     .frame(width: 126, height: 28)
                 }
-                Button("恢复默认 ⌥⌘W") { viewModel.resetHotKey() }
+                Button("恢复默认 \(HotKeyConfiguration.default.displayName)") {
+                    viewModel.resetHotKey()
+                }
                     .buttonStyle(outlineButtonStyle)
             }
             .padding(20)

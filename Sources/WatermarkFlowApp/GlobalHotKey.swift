@@ -6,6 +6,11 @@ struct HotKeyConfiguration: Codable, Equatable {
     static let defaultsKey = "globalHotKeyConfiguration"
     static let `default` = HotKeyConfiguration(
         keyCode: UInt32(kVK_ANSI_W),
+        modifiers: UInt32(controlKey | optionKey | cmdKey),
+        keyLabel: "W"
+    )
+    static let legacyDefault = HotKeyConfiguration(
+        keyCode: UInt32(kVK_ANSI_W),
         modifiers: UInt32(cmdKey | optionKey),
         keyLabel: "W"
     )
@@ -31,6 +36,10 @@ struct HotKeyConfiguration: Codable, Equatable {
         guard let data = defaults.data(forKey: defaultsKey),
               let configuration = try? JSONDecoder().decode(HotKeyConfiguration.self, from: data),
               configuration.hasRequiredModifier else { return .default }
+        if configuration == .legacyDefault {
+            Self.default.save(to: defaults)
+            return .default
+        }
         return configuration
     }
 

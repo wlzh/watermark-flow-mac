@@ -11,7 +11,7 @@ cd watermark-flow-mac
 
 ## 从 GitHub Release 安装
 
-1. 从 [Releases](https://github.com/wlzh/watermark-flow-mac/releases) 下载当前版本的 `WatermarkFlow-v0.4.4-macos-universal.zip` 和 `SHA256.txt`。
+1. 从 [Releases](https://github.com/wlzh/watermark-flow-mac/releases) 下载当前版本的 `WatermarkFlow-v0.4.5-macos-universal.zip` 和 `SHA256.txt`。
 2. 解压后把 `WatermarkFlow.app` 移到“应用程序”。
 3. 当前版本尚未进行 Apple notarization。首次启动如果被 Gatekeeper 拦截，在 Finder 中按住 Control 点击应用并选择“打开”。
 4. 高级用户可把两个文件放在同一目录并运行 `shasum -a 256 -c SHA256.txt` 验证下载完整性。
@@ -26,7 +26,7 @@ open /Applications/WatermarkFlow.app
 
 ## 权限
 
-正常剪贴板读写与 Carbon 全局快捷键不需要辅助功能权限。默认快捷键为 `⌥⌘W`，可在编辑器右侧录制其他组合键；注册冲突时应用会保留原快捷键。菜单栏可立即选择任意模板生成，也可通过“设置快捷默认模板”只切换以后快捷键使用的模板。
+正常剪贴板读写与 Carbon 全局快捷键不需要辅助功能权限。默认快捷键为 `⌃⌥⌘W`，避开 macOS 标准的 `⌥⌘W`“关闭全部窗口”命令；可在编辑器右侧录制其他组合键，注册冲突时应用会保留原快捷键。旧默认值会自动迁移，自定义值保持不变。菜单栏可立即选择任意模板生成，也可通过“设置快捷默认模板”只切换以后快捷键使用的模板。
 
 默认剪贴板策略为“仅空画布自动载入”：窗口可见时轮询系统剪贴板，空画布直接载入原生图片或 Finder 复制的单个本地图片文件，已有图片时只提示替换，不会静默覆盖。可在“快捷操作”切换为关闭或始终自动替换。多个文件、文件夹和非图片内容会被忽略，应用自己生成的图片不会被重复载入。
 

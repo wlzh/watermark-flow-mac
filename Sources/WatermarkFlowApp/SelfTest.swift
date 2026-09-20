@@ -312,6 +312,19 @@ enum SelfTest {
               restoredEditor.templates.count == 4 else {
             throw Failure("clear canvas removed saved templates or retained image state")
         }
+        let legacyHotKeyDefaultsName = "WatermarkFlow.LegacyHotKeySelfTest.\(UUID().uuidString)"
+        guard let legacyHotKeyDefaults = UserDefaults(suiteName: legacyHotKeyDefaultsName) else {
+            throw Failure("unable to create legacy hotkey defaults")
+        }
+        defer { legacyHotKeyDefaults.removePersistentDomain(forName: legacyHotKeyDefaultsName) }
+        HotKeyConfiguration.legacyDefault.save(to: legacyHotKeyDefaults)
+        let migratedHotKey = HotKeyConfiguration.load(from: legacyHotKeyDefaults)
+        guard migratedHotKey == .default,
+              migratedHotKey.displayName == "⌃⌥⌘W",
+              let migratedData = legacyHotKeyDefaults.data(forKey: HotKeyConfiguration.defaultsKey),
+              try JSONDecoder().decode(HotKeyConfiguration.self, from: migratedData) == .default else {
+            throw Failure("legacy default hotkey migration failed")
+        }
         let customHotKey = HotKeyConfiguration(
             keyCode: UInt32(kVK_ANSI_K),
             modifiers: UInt32(cmdKey | shiftKey),
@@ -530,6 +543,7 @@ enum SelfTest {
         print("SELF_TEST_CANVAS_DRAG=PASS canvas=pan watermark=move")
         print("SELF_TEST_CLEAR_CANVAS=PASS templatesPreserved=4")
         print("SELF_TEST_CUSTOM_HOTKEY=PASS value=\(customHotKey.displayName)")
+        print("SELF_TEST_DEFAULT_HOTKEY_MIGRATION=PASS value=\(HotKeyConfiguration.default.displayName)")
         print("SELF_TEST_DEFAULT_TEMPLATE=PASS value=\(defaultRestoredEditor.defaultTemplateName)")
         print("SELF_TEST_HOTKEY_RECORDER=PASS")
         print("SELF_TEST_BRAND_ICON=PASS semantic=image+watermark template=18x18")
