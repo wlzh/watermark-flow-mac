@@ -1,4 +1,5 @@
 import AppKit
+import os
 import SwiftUI
 import WatermarkCore
 
@@ -15,6 +16,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     private var clipboardTimer: Timer?
     private var quickApplyTask: Task<Void, Never>?
     private var statusFlashGeneration = 0
+    private var isPresentingQuickApplyError = false
+    private let quickApplyLog = Logger(subsystem: "com.wlzh.WatermarkFlow", category: "quickapply")
 
     override convenience init() {
         self.init(viewModel: EditorViewModel())
@@ -156,7 +159,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
 
     private func performQuickApply(templateID: UUID) {
-        guard quickApplyTask == nil else { return }
+        guard quickApplyTask == nil else {
+            viewModel.statusMessage = "上一次快速生成仍在处理，请稍候"
+            quickApplyLog.notice("ignored: another quick apply is still running")
+            return
+        }
+        logQuickApplyStart(templateID: templateID)
         flashStatus(symbol: "hourglass", duration: 15)
         quickApplyTask = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -164,15 +172,54 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
             do {
                 _ = try await self.viewModel.quickApplyTemplateToClipboard(id: templateID)
                 guard !Task.isCancelled else { return }
+                self.quickApplyLog.info("quick apply succeeded template=\(templateID.uuidString, privacy: .public)")
                 self.flashStatus(symbol: "checkmark.circle.fill")
                 NSSound(named: "Tink")?.play()
             } catch {
                 guard !Task.isCancelled else { return }
+                self.quickApplyLog.error("quick apply failed template=\(templateID.uuidString, privacy: .public) reason=\(error.localizedDescription, privacy: .public)")
                 self.showEditor()
-                self.viewModel.statusMessage = error.localizedDescription
+                self.viewModel.statusMessage = "快速生成失败：\(error.localizedDescription)"
+                self.presentQuickApplyFailure(error)
                 self.flashStatus(symbol: "exclamationmark.triangle.fill")
                 NSSound.beep()
             }
+        }
+    }
+
+    private func logQuickApplyStart(templateID: UUID) {
+        let pasteboard = NSPasteboard.general
+        let types = pasteboard.types?.map(\.rawValue).joined(separator: ",") ?? "nil"
+        let templateName = viewModel.templates.first { $0.id == templateID }?.name ?? "unknown"
+        quickApplyLog.notice(
+            "quick apply start template=\(templateName, privacy: .public) changeCount=\(pasteboard.changeCount) types=\(types, privacy: .public) access=\(Self.pasteboardAccessDescription(pasteboard), privacy: .public)"
+        )
+    }
+
+    private static func pasteboardAccessDescription(_ pasteboard: NSPasteboard) -> String {
+        guard #available(macOS 15.4, *) else { return "unavailable" }
+        switch pasteboard.accessBehavior {
+        case .default: return "default"
+        case .ask: return "ask"
+        case .alwaysAllow: return "allow"
+        case .alwaysDeny: return "deny"
+        @unknown default: return "unknown"
+        }
+    }
+
+    private func presentQuickApplyFailure(_ error: Error) {
+        guard !isPresentingQuickApplyError, let window = windowController?.window else { return }
+        isPresentingQuickApplyError = true
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "快速生成并复制失败"
+        alert.informativeText = "\(error.localizedDescription)\n\n重试前可重新复制一次图片；网页中的图片请在图片上右键选择“复制图像”。"
+        if case ClipboardError.clipboardAccessDenied = error {
+            alert.informativeText = error.localizedDescription
+        }
+        alert.addButton(withTitle: "好")
+        alert.beginSheetModal(for: window) { [weak self] _ in
+            self?.isPresentingQuickApplyError = false
         }
     }
 

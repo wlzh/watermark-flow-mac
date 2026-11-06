@@ -13,6 +13,7 @@ public enum ClipboardError: LocalizedError {
     case multipleImageFiles
     case unreadableImageFile
     case localImageFileTooLarge
+    case clipboardAccessDenied
 
     public var errorDescription: String? {
         switch self {
@@ -24,8 +25,9 @@ public enum ClipboardError: LocalizedError {
         case .webImageUnavailable: return "已识别网页图片，但无法读取原图，请在图片上右键选择“复制图像”后重试"
         case .imageTooLarge: return "复制的网页图片超过 64 MB 限制"
         case .multipleImageFiles: return "剪贴板包含多个文件，请只复制一个图片文件"
-        case .unreadableImageFile: return "复制的文件不是可读取的图片"
+        case .unreadableImageFile: return "复制的图片文件已失效，请重新复制图片"
         case .localImageFileTooLarge: return "复制的图片文件超过 512 MB 限制"
+        case .clipboardAccessDenied: return "系统已禁止 WatermarkFlow 读取剪贴板，请在 系统设置 › 隐私与安全性 › 从其他 App 粘贴 中允许后重试"
         }
     }
 }
@@ -38,7 +40,16 @@ public enum ClipboardService {
 
     public static func readImage(from pasteboard: NSPasteboard = .general) throws -> NSImage {
         if localFileURLs(from: pasteboard)?.isEmpty == false {
-            return try readLocalImageFile(from: pasteboard)
+            do {
+                return try readLocalImageFile(from: pasteboard)
+            } catch ClipboardError.unreadableImageFile {
+                // 微信等应用复制图片时会附带临时文件 URL；文件被清理后回落到原生像素数据。
+                // 多文件场景不做回落：NSImage 会自行挑选文件，可能给错误的图片加水印。
+                if let image = NSImage(pasteboard: pasteboard) {
+                    return image
+                }
+                throw ClipboardError.unreadableImageFile
+            }
         }
         if let image = NSImage(pasteboard: pasteboard) {
             return image
@@ -71,7 +82,7 @@ public enum ClipboardService {
             throw error
         }
         guard let html = clipboardHTML(from: pasteboard) else {
-            throw ClipboardError.noImage
+            throw inaccessiblePasteboardError(pasteboard)
         }
 
         let sources = imageSources(in: html)
@@ -106,6 +117,15 @@ public enum ClipboardService {
         let tiffWritten = pasteboard.setData(tiff, forType: .tiff)
         guard pngWritten || tiffWritten else { throw ClipboardError.writeFailed }
         return pasteboard.changeCount
+    }
+
+    private static func inaccessiblePasteboardError(_ pasteboard: NSPasteboard) -> ClipboardError {
+        guard pasteboard.name == NSPasteboard.Name.general,
+              #available(macOS 15.4, *),
+              pasteboard.accessBehavior == .alwaysDeny else {
+            return .noImage
+        }
+        return .clipboardAccessDenied
     }
 
     private static func clipboardHTML(from pasteboard: NSPasteboard) -> String? {

@@ -4,7 +4,7 @@
 
 | 项目 | 当前值 | 权威来源 |
 | --- | --- | --- |
-| 应用版本 | `0.4.5` | [`VERSION`](../VERSION) |
+| 应用版本 | `0.4.6` | [`VERSION`](../VERSION) |
 | 构建号 | `16` | [`BUILD_NUMBER`](../BUILD_NUMBER) |
 | 模板 schema | `4` | [`TemplateRepository.swift`](../Sources/WatermarkCore/TemplateRepository.swift) |
 | 最低系统 | macOS 13 | [`Info.plist`](../Resources/Info.plist) 与 [`Package.swift`](../Package.swift) |
@@ -18,12 +18,12 @@
 
 ## 当前版本文档
 
-- [v0.4.5 PRD](prd/v0.4.5/prd.md)
-- [v0.4.5 交互设计](prd/v0.4.5/design.md)
-- [v0.4.5 开发记录](prd/v0.4.5/dev.md)
-- [v0.4.5 实施计划](prd/v0.4.5/plan.md)
-- [v0.4.5 测试报告](testing/v0.4.5-test-report.md)
-- [v0.4.5 Release Notes](RELEASE_NOTES_v0.4.5.md)
+- [v0.4.6 PRD](prd/v0.4.6/prd.md)
+- [v0.4.6 交互设计](prd/v0.4.6/design.md)
+- [v0.4.6 开发记录](prd/v0.4.6/dev.md)
+- [v0.4.6 实施计划](prd/v0.4.6/plan.md)
+- [v0.4.6 测试报告](testing/v0.4.6-test-report.md)
+- [v0.4.6 Release Notes](RELEASE_NOTES_v0.4.6.md)
 - [安装、卸载和分发限制](INSTALL.md)
 - [全部版本 PRD 索引](prd/README.md)
 - [Changelog](../CHANGELOG.md)

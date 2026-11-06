@@ -956,6 +956,43 @@ runner.test("single local image file clipboard URL is readable") {
     )
 }
 
+runner.test("stale local image file falls back to native pasteboard pixels") {
+    let pasteboard = NSPasteboard(name: NSPasteboard.Name("WatermarkFlowFileTests.\(UUID().uuidString)"))
+    defer { pasteboard.releaseGlobally() }
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("WatermarkFlowFileTests-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let imageURL = directory.appendingPathComponent("copied-image.png")
+    let source = try sampleImage(width: 320, height: 200)
+    try WatermarkRenderer.encode(image: source, format: .png).write(to: imageURL)
+    guard let tiff = source.tiffRepresentation else {
+        throw TestFailure(message: "sample TIFF encoding failed")
+    }
+
+    // 模拟微信等应用：文件 URL 与原生像素同时存在，随后临时文件被系统清理。
+    pasteboard.clearContents()
+    try expect(pasteboard.writeObjects([imageURL as NSURL]), "file URL pasteboard write failed")
+    try expect(pasteboard.setData(tiff, forType: .tiff), "native TIFF pasteboard write failed")
+    try FileManager.default.removeItem(at: imageURL)
+
+    let recovered = try ClipboardService.readImage(from: pasteboard)
+    try expect(
+        WatermarkRenderer.pixelSize(of: recovered) == CGSize(width: 320, height: 200),
+        "stale file should fall back to native pasteboard pixels"
+    )
+
+    // 仅剩失效文件 URL 且没有原生像素时，仍应给出明确错误而不是误报“无图片”以外的状态。
+    pasteboard.clearContents()
+    try expect(pasteboard.writeObjects([imageURL as NSURL]), "stale file URL rewrite failed")
+    do {
+        _ = try ClipboardService.readImage(from: pasteboard)
+        throw TestFailure(message: "stale file without pixels should not decode")
+    } catch ClipboardError.unreadableImageFile {
+        // Expected: the user must copy the image again.
+    }
+}
+
 runner.test("multiple local image files are rejected") {
     let pasteboard = NSPasteboard(name: NSPasteboard.Name("WatermarkFlowFileTests.\(UUID().uuidString)"))
     defer { pasteboard.releaseGlobally() }
